@@ -1,0 +1,17 @@
+# Secrets do Streamlit (login e token do GitHub)
+.streamlit/secrets.toml
+.env
+
+# Dados ficam no repositório PRIVADO da coleta — nunca versionar aqui
+dados/
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Ferramentas locais
+.claude/

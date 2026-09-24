@@ -1,0 +1,26 @@
+# Identidade visual Mindsight 3.0 — tema claro (off-white)
+[theme]
+base = "light"
+primaryColor = "#7321E8"
+backgroundColor = "#FFFAF6"
+secondaryBackgroundColor = "#F6EFE8"
+textColor = "#181818"
+borderColor = "#EDE6DF"
+dataframeBorderColor = "#EDE6DF"
+dataframeHeaderBackgroundColor = "#FBF6F1"
+showWidgetBorder = true
+baseRadius = "10px"
+buttonRadius = "999px"
+linkColor = "#7321E8"
+violetColor = "#7321E8"
+greenColor = "#1E9E61"
+redColor = "#C8322F"
+orangeColor = "#FF9C3A"
+grayColor = "#8A8580"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, sans-serif"
+headingFont = "'Plus Jakarta Sans':https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap, sans-serif"
+headingFontWeights = [600, 600, 600, 600, 600, 600]
+chartCategoricalColors = ["#7321E8", "#F558D6", "#8BE1FB", "#FF9C3A"]
+
+[client]
+toolbarMode = "minimal"

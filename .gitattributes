@@ -1,0 +1,3 @@
+# Quebra de linha LF em tudo (o Actions roda em Linux; evita diffs falsos nos CSVs vindos do Windows)
+* text=auto eol=lf
+*.png binary
