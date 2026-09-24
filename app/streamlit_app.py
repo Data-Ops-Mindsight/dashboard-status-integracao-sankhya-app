@@ -86,7 +86,7 @@ with aba_atual:
 
     col_status, col_cliente, col_ordem = st.columns([5, 3, 1.4], vertical_alignment="bottom")
     estados_filtro = col_status.pills(
-        "Status", regras.ESTADOS, selection_mode="multi",
+        "Status", regras.ESTADOS_EXIBICAO, selection_mode="multi",
         format_func=lambda e: f"{e} ({int(contagem.get(e, 0))})",
     )
     clientes_filtro = col_cliente.multiselect("Cliente", sorted(df_atual["tenant"]), placeholder="Todos os clientes")

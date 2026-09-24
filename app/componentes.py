@@ -76,7 +76,7 @@ def selo(estado):
 
 def cartoes_estado(contagem, total):
     itens = []
-    for estado in regras.ESTADOS:
+    for estado in regras.ESTADOS_EXIBICAO:
         qtd = int(contagem.get(estado, 0))
         pct = f"{qtd / total:.0%} dos clientes" if total else ""
         itens.append(

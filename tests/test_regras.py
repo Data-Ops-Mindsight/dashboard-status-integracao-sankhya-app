@@ -112,3 +112,9 @@ def test_taxa_erro_semanal_agrupa_de_segunda_a_domingo():
 def test_taxa_erro_semanal_so_pendentes_e_nan():
     df = pd.DataFrame({"tenant": ["alfa"], "id_sync": [1], "data_sync": ["2026-09-21"], "status": ["pending"]})
     assert pd.isna(regras.taxa_erro_semanal(df).iloc[0]["taxa_erro"])
+
+
+def test_ordem_de_exibicao_tem_os_mesmos_estados():
+    assert regras.ESTADOS_EXIBICAO == [regras.SUCESSO, regras.ERRO, regras.PENDENTE,
+                                       regras.PENDENTE_PROBLEMA, regras.SEM_SYNC]
+    assert sorted(regras.ESTADOS_EXIBICAO) == sorted(regras.ESTADOS)

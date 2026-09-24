@@ -15,6 +15,8 @@ SUCESSO = "Sucesso"
 
 # Ordem de gravidade (usada para ordenar a tabela)
 ESTADOS = [SEM_SYNC, ERRO, PENDENTE_PROBLEMA, PENDENTE, SUCESSO]
+# Ordem de exibição dos cartões e dos filtros
+ESTADOS_EXIBICAO = [SUCESSO, ERRO, PENDENTE, PENDENTE_PROBLEMA, SEM_SYNC]
 
 RESULTADOS_FALHA = {"erro_http", "erro_conexao"}
 
