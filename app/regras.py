@@ -2,12 +2,12 @@
 
 import pandas as pd
 
-LIMITE_SEM_SYNC = pd.Timedelta(hours=48)
+LIMITE_SEM_SYNC = pd.Timedelta(days=7)
 LIMITE_PENDENTE = pd.Timedelta(hours=24)
 JANELA_TAXA_ERRO = pd.Timedelta(days=7)
 QTD_ULTIMOS_SYNCS = 7
 
-SEM_SYNC = "Sem sync recente"
+SEM_SYNC = "7d sem sync"
 ERRO = "Erro"
 PENDENTE_PROBLEMA = "Pendente com problema"
 PENDENTE = "Pendente"

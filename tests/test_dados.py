@@ -76,3 +76,13 @@ def test_pasta_local(tmp_path, monkeypatch):
     assert len(dados.carregar_historico()) == 1
     with pytest.raises(dados.ErroFonteDados, match="não encontrado"):
         dados.carregar_coletas()
+
+
+def test_horarios_ficam_em_utc_como_no_sistema(tmp_path, monkeypatch):
+    # sync às 23h30 UTC do dia 25 (em Brasília seriam 20h30): o dia e o horário seguem o sistema
+    csv = CSV_HISTORICO.replace("2026-09-23T01:00:00-03:00", "2026-09-25T23:30:00Z")
+    (tmp_path / "historico_sync.csv").write_text(csv, encoding="utf-8")
+    monkeypatch.setattr(dados, "PASTA_DADOS", tmp_path)
+    h = dados.carregar_historico()
+    assert h.loc[0, "created"].strftime("%d/%m %H:%M") == "25/09 23:30"
+    assert h.loc[0, "data_sync"] == "2026-09-25"

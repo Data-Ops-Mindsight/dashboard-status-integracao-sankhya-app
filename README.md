@@ -33,7 +33,7 @@ streamlit run app/streamlit_app.py
 | Arquivo | Conteúdo |
 |---|---|
 | `app/streamlit_app.py` | layout e filtros |
-| `app/regras.py` | regras de status (último sync por cliente, pendente com problema, sem sync > 48h, taxa de erro) |
+| `app/regras.py` | regras de status (último sync por cliente, pendente com problema, sem sync há mais de 7 dias, taxa de erro) |
 | `app/dados.py` | leitura dos CSVs (GitHub ou pasta local) |
 | `app/autenticacao.py`, `app/senha.py` | login por usuário e senha (hash PBKDF2, limite de tentativas) |
 | `app/tema.py`, `app/componentes.py`, `.streamlit/config.toml` | identidade visual Mindsight 3.0 |

@@ -14,7 +14,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-FUSO = "America/Sao_Paulo"
+# Horários como vêm do sistema (a API devolve UTC) — sem conversão para Brasília
+FUSO = "UTC"
 PASTA_DADOS = Path(os.environ.get("DADOS_PASTA", Path(__file__).resolve().parents[1] / "dados"))
 
 ARQUIVO_HISTORICO = "historico_sync.csv"
@@ -91,6 +92,8 @@ def carregar_historico(fonte=None):
         df[coluna] = _para_data_hora(df[coluna])
     for coluna in COLUNAS_NUMERICAS:
         df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
+    # Dia do sync pelo horário do sistema (UTC), independente de como o CSV gravou a data
+    df["data_sync"] = df["created"].dt.strftime("%Y-%m-%d")
     return df
 
 

@@ -39,8 +39,10 @@ def coletas(*tenants, resultado="ok"):
     ([(23, "pending"), (47, "success")], regras.PENDENTE),
     ([(25, "pending"), (49, "success")], regras.PENDENTE_PROBLEMA),
     ([(1, "pending"), (25, "pending")], regras.PENDENTE_PROBLEMA),
-    ([(49, "success")], regras.SEM_SYNC),
-    ([(49, "error")], regras.SEM_SYNC),
+    ([(49, "success")], regras.SUCESSO),               # 2 dias sem sync ainda não conta
+    ([(24 * 7 - 1, "success")], regras.SUCESSO),
+    ([(24 * 7 + 1, "success")], regras.SEM_SYNC),      # mais de 7 dias
+    ([(24 * 7 + 1, "error")], regras.SEM_SYNC),
     ([], regras.SEM_SYNC),
 ])
 def test_classificar(itens, esperado):

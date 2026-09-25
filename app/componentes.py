@@ -40,7 +40,7 @@ def cabecalho(ultima_execucao, horas_desde, atrasada):
         "<div><h1>Integrações Sankhya</h1>"
         "<div class='ms-sub'>Acompanhamento do sync Folha Sankhya por cliente</div></div>"
         "</div>"
-        "<div class='ms-coleta'>Última coleta"
+        "<div class='ms-coleta'>Última coleta (UTC)"
         f"<b>{formatar_data_hora(ultima_execucao)}</b>"
         f"{formatar_ha_quanto(horas_desde)}{alerta}</div>"
         "</div>"

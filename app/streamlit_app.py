@@ -266,4 +266,4 @@ with aba_historico:
                        "Itens afetados": st.column_config.NumberColumn(format="localized")},
     )
 
-ui.rodape("Coleta automática a cada 4h · dados do histórico de sync da plataforma")
+ui.rodape("Coleta automática a cada 4h · horários em UTC, como no sistema")
