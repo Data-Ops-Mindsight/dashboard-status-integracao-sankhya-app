@@ -47,6 +47,11 @@ def carregar(fonte):
     return dados.carregar_historico(fonte), dados.carregar_coletas(fonte)
 
 
+def recarregar():
+    """Descarta o cache (para todos os usuários) e busca os CSVs de novo no próximo carregamento."""
+    carregar.clear()
+
+
 def sem_fuso(serie):
     """Altair/Vega interpreta datas sem fuso como horário local do navegador."""
     return serie.dt.tz_localize(None)
@@ -61,6 +66,7 @@ try:
     historico, coletas = carregar(fonte)
 except dados.ErroFonteDados as e:
     st.error(f"Não foi possível carregar os dados ({dados.descrever_fonte(fonte)}): {e}")
+    st.button("Tentar de novo", on_click=recarregar)
     st.stop()
 
 agora = pd.Timestamp.now(tz=dados.FUSO)
@@ -69,10 +75,12 @@ ultima_execucao = coletas["executado_em"].max()
 
 ui.cabecalho(ultima_execucao, (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)
+col_usuario, col_recarregar, col_sair = st.columns([6.4, 1.6, 1], vertical_alignment="center")
 if usuario:
-    col_usuario, col_sair = st.columns([8, 1], vertical_alignment="center")
     col_usuario.markdown(f"<div class='ms-usuario'>Conectado como <b>{usuario}</b></div>", unsafe_allow_html=True)
     col_sair.button("Sair", on_click=autenticacao.sair, width="stretch")
+col_recarregar.button("↻ Recarregar dados", on_click=recarregar, width="stretch",
+                      help="Busca os dados mais recentes agora (normalmente atualizam sozinhos a cada 10 min)")
 
 aba_atual, aba_historico = st.tabs(["Status atual", "Histórico"])
 
