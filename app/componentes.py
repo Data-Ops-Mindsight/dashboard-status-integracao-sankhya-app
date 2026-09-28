@@ -114,16 +114,32 @@ def _barra_erro(taxa):
             f"<span>{taxa:.0%}</span></span>")
 
 
+def _tag_erro_predominante(tipo_erro, quantidade_total):
+    # df_atual vem de um merge (tenant sem classificação publicada ainda) --
+    # a coluna fica com NaN (float), não None, então `pd.isna` é
+    # obrigatório aqui (`not tipo_erro` não pega NaN, que é truthy).
+    if pd.isna(tipo_erro) or not tipo_erro:
+        return "<span class='ms-quando'>—</span>"
+    qtd = "" if pd.isna(quantidade_total) else f" ({int(quantidade_total)})"
+    return f"<span class='ms-selo' style='--cor:{tema.GRAFITE};--texto:{tema.GRAFITE}'>{escape(tipo_erro)}{qtd}</span>"
+
+
 def tabela_status(df):
     if df.empty:
         _render("<div class='ms-tabela-wrap'><p class='ms-nota' style='padding:18px'>Nenhum cliente com esses filtros.</p></div>")
         return
 
+    tem_classificacao = "tipo_erro_predominante" in df.columns
     linhas = []
     for linha in df.itertuples(index=False):
         aviso = ("<span class='ms-aviso' title='A última coleta deste cliente falhou na API — o status pode estar desatualizado'>⚠️</span>"
                  if linha.falha_coleta else "")
         itens = "—" if pd.isna(linha.itens) else f"{int(linha.itens):,}".replace(",", ".")
+        coluna_classificacao = (
+            f"<td title='Tipo de erro mais frequente já detectado nesse cliente, entre os DETECTADOS -- inclusive os que ainda caem em revisão manual'>"
+            f"{_tag_erro_predominante(linha.tipo_erro_predominante, linha.qtd_tipo_predominante)}</td>"
+            if tem_classificacao else ""
+        )
         linhas.append(
             "<tr>"
             f"<td class='ms-cliente'>{escape(linha.tenant)}{aviso}</td>"
@@ -133,10 +149,13 @@ def tabela_status(df):
             f"<td>{_barra_erro(linha.taxa_erro_7d)}</td>"
             f"<td class='ms-num'>{linha.erros_seguidos or '—'}</td>"
             f"<td>{_trilha_syncs(linha.ultimos_syncs)}</td>"
+            f"{coluna_classificacao}"
             "</tr>"
         )
 
     cabecalhos = ["Cliente", "Status", "Último sync", "Itens afetados", "Erro 7d", "Erros seguidos", "Últimos 7 syncs"]
+    if tem_classificacao:
+        cabecalhos.append("Erro predominante")
     ths = "".join(f"<th{' class=ms-num' if c in ('Itens afetados', 'Erros seguidos') else ''}>{c}</th>" for c in cabecalhos)
     _render(f"<div class='ms-tabela-wrap'><table class='ms-tabela'><thead><tr>{ths}</tr></thead>"
             f"<tbody>{''.join(linhas)}</tbody></table></div>")

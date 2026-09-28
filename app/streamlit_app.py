@@ -1,5 +1,7 @@
 """Dashboard de acompanhamento das integrações Sankhya."""
 
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import altair as alt
@@ -9,6 +11,7 @@ import streamlit as st
 import autenticacao
 import componentes as ui
 import dados
+import dados_correcoes
 import regras
 import tema
 
@@ -42,14 +45,55 @@ def fonte_dados():
     return dict(fonte) if fonte else None
 
 
+def credenciais_sheets():
+    """Credencial (JSON de conta de serviço) pra ler a planilha de
+    correções: seção [sheets] dos secrets (produção) ou
+    GOOGLE_SHEETS_CREDENTIALS_JSON no ambiente (desenvolvimento local) --
+    mesma credencial que `automacao/aplicador/relatorio_sheets.py` usa pra
+    publicar, só que com escopo de leitura."""
+    try:
+        secao = st.secrets.get("sheets")
+    except Exception:
+        secao = None
+    if secao and secao.get("credentials_json"):
+        return secao["credentials_json"]
+    return os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON", "")
+
+
 @st.cache_data(ttl=600, show_spinner="Carregando dados…")
 def carregar(fonte):
     return dados.carregar_historico(fonte), dados.carregar_coletas(fonte)
 
 
+@st.cache_data(ttl=300, show_spinner="Carregando indicadores de correção…")
+def carregar_correcoes(credenciais_json):
+    return dados_correcoes.carregar_resumo(credenciais_json), dados_correcoes.carregar_correcoes(credenciais_json)
+
+
+@st.cache_data(ttl=300, show_spinner="Consultando cobertura de credenciais…")
+def carregar_cobertura_credenciais_cacheada():
+    return dados_correcoes.carregar_cobertura_credenciais()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def carregar_classificacao_cacheada(credenciais_json):
+    """Silencioso (`show_spinner=False`) e nunca propaga erro -- essa
+    classificação só ENRIQUECE a aba "Status atual" com uma tag de tipo de
+    erro predominante; se falhar, a tabela de status continua funcionando
+    normalmente, só sem essa coluna."""
+    try:
+        return dados_correcoes.carregar_classificacao_erros(credenciais_json)
+    except dados_correcoes.ErroFonteDados:
+        return []
+
+
 def recarregar():
-    """Descarta o cache (para todos os usuários) e busca os CSVs de novo no próximo carregamento."""
+    """Descarta o cache (para todos os usuários) e busca os CSVs/a planilha
+    de novo no próximo carregamento."""
     carregar.clear()
+    carregar_correcoes.clear()
+    carregar_cobertura_credenciais_cacheada.clear()
+    carregar_classificacao_cacheada.clear()
 
 
 def sem_fuso(serie):
@@ -73,6 +117,25 @@ agora = pd.Timestamp.now(tz=dados.FUSO)
 df_atual = regras.status_atual(historico, coletas, agora)
 ultima_execucao = coletas["executado_em"].max()
 
+# Tag de classificação por cliente (tipo_erro predominante, TODO tipo
+# detectado -- não só o automatizado) pra priorização -- enriquece
+# "Status atual" sem depender dele: falha em carregar não impede a tabela
+# de status de funcionar (só fica sem essa coluna).
+try:
+    classificacao = carregar_classificacao_cacheada(credenciais_sheets())
+except Exception:
+    classificacao = []
+predominantes = dados_correcoes.erro_predominante_por_tenant(classificacao)
+df_atual["tipo_erro_predominante"] = df_atual["tenant"].map(
+    lambda t: predominantes.get(t, {}).get("tipo_erro_predominante")
+)
+# Quantidade DESSE tipo específico (não o total de todos os tipos do
+# tenant) -- "multiplos_registros_ativos (12)" tem que significar 12
+# ocorrências de multiplos_registros_ativos, não o total geral do tenant.
+df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
+    lambda t: predominantes.get(t, {}).get("quantidade_predominante")
+)
+
 ui.cabecalho(ultima_execucao, (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)
 col_usuario, col_recarregar, col_sair = st.columns([6.4, 1.6, 1], vertical_alignment="center")
@@ -82,7 +145,7 @@ if usuario:
 col_recarregar.button("↻ Recarregar dados", on_click=recarregar, width="stretch",
                       help="Busca os dados mais recentes agora (normalmente atualizam sozinhos a cada 10 min)")
 
-aba_atual, aba_historico = st.tabs(["Status atual", "Histórico"])
+aba_atual, aba_historico, aba_correcoes = st.tabs(["Status atual", "Histórico", "Correções aplicadas"])
 
 # =============================================================================
 # Aba 1 — Status atual
@@ -265,5 +328,126 @@ with aba_historico:
         column_config={"Sync": st.column_config.NumberColumn(format="%d"),
                        "Itens afetados": st.column_config.NumberColumn(format="localized")},
     )
+
+# =============================================================================
+# Aba 3 — Correções aplicadas (indicadores da triagem/automação de
+# correção, migrados do antigo dashboard/ do repositório de origem)
+# =============================================================================
+
+with aba_correcoes:
+    credenciais_json = credenciais_sheets()
+    try:
+        resumo, correcoes = carregar_correcoes(credenciais_json)
+    except dados_correcoes.ErroFonteDados as e:
+        st.error(f"Não foi possível carregar o relatório do Google Sheets: {e}")
+        st.button("Tentar de novo", on_click=recarregar, key="tentar_de_novo_correcoes")
+        resumo, correcoes = [], []
+
+    if not resumo:
+        st.info("A planilha de relatório ainda não tem nenhuma execução publicada.")
+    else:
+        df_resumo = pd.DataFrame(resumo)
+        df_correcoes = pd.DataFrame(correcoes)
+
+        total_corrigido = int(df_correcoes["quantidade"].sum()) if not df_correcoes.empty else 0
+        execucoes = df_resumo["data_hora_utc"].nunique()
+        if "duracao_execucao_s" in df_resumo.columns:
+            duracoes = pd.to_numeric(df_resumo["duracao_execucao_s"], errors="coerce").dropna()
+        else:
+            # Linhas publicadas antes dessa coluna existir -- a planilha se
+            # atualiza sozinha na próxima execução real
+            # (relatorio_sheets.py sempre confere/corrige o cabeçalho).
+            duracoes = pd.Series(dtype=float)
+        media_min = f"{duracoes.mean() / 60:.0f} min" if not duracoes.empty else "—"
+
+        ui.cartoes_metricas([
+            ("Correções aplicadas (total)", total_corrigido, None),
+            ("Execuções registradas", int(execucoes), None),
+            ("Duração média por execução", media_min, None),
+        ])
+
+        ui.secao("Quais erros estamos corrigindo")
+        if df_correcoes.empty:
+            ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
+        else:
+            por_tipo_erro = df_correcoes.groupby("tipo_erro")["quantidade"].sum().sort_values(ascending=False)
+            col_a, col_b = st.columns([2, 1])
+            col_a.bar_chart(por_tipo_erro, color=tema.ROXO)
+            col_b.dataframe(por_tipo_erro.rename("quantidade"), width="stretch")
+
+        ui.secao("Erros corrigidos por cliente")
+        if df_correcoes.empty:
+            ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
+        else:
+            por_tenant = df_correcoes.groupby("tenant")["quantidade"].sum().sort_values(ascending=False)
+            st.bar_chart(por_tenant, color=tema.ROXO)
+
+            st.caption("Tipo de erro por cliente")
+            matriz = df_correcoes.pivot_table(
+                index="tenant", columns="tipo_erro", values="quantidade", aggfunc="sum", fill_value=0
+            )
+            st.dataframe(matriz, width="stretch")
+
+        ui.secao("Correções aplicadas ao longo do tempo")
+        if df_correcoes.empty:
+            ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
+        else:
+            df_correcoes["data"] = pd.to_datetime(df_correcoes["data_hora_utc"], errors="coerce").dt.date
+            por_dia = df_correcoes.groupby("data")["quantidade"].sum()
+            st.line_chart(por_dia, color=tema.ROXO)
+
+        ui.secao("Taxa de sucesso × falha por tenant")
+        taxas = dados_correcoes.taxa_sucesso_por_tenant(resumo)
+        if not taxas:
+            ui.nota("Sem dados suficientes ainda.")
+        else:
+            df_taxas = pd.DataFrame(taxas).T.sort_values("taxa_sucesso_pct")
+            st.dataframe(df_taxas, width="stretch")
+
+        ui.secao("Tempo de execução por run")
+        ui.nota("Duração da execução INTEIRA (todos os tenants daquele run, em paralelo) -- não confundir "
+                "com o tempo de cada tenant individualmente, na seção abaixo.")
+        if duracoes.empty:
+            ui.nota("Nenhuma execução com duração registrada ainda.")
+        else:
+            df_duracao_por_run = (
+                df_resumo.assign(duracao_execucao_s=pd.to_numeric(df_resumo["duracao_execucao_s"], errors="coerce"))
+                .dropna(subset=["duracao_execucao_s"])
+                .drop_duplicates(subset=["data_hora_utc"])
+                .assign(data_hora_utc=lambda d: pd.to_datetime(d["data_hora_utc"], errors="coerce"))
+                .set_index("data_hora_utc")["duracao_execucao_s"]
+                / 60
+            )
+            st.line_chart(df_duracao_por_run.rename("duração (min)"), color=tema.ROXO)
+
+        ui.secao("Tempo de execução por tenant")
+        ui.nota("Média de quanto tempo CADA tenant levou sozinho (login incluso), entre as execuções "
+                "registradas -- ajuda a achar quais tenants são os mais lentos.")
+        duracao_por_tenant = dados_correcoes.duracao_media_por_tenant(resumo)
+        if not duracao_por_tenant:
+            ui.nota("Nenhuma execução com duração por tenant registrada ainda.")
+        else:
+            serie_duracao_tenant = pd.Series(duracao_por_tenant, name="duração média (s)").sort_values(ascending=False)
+            st.bar_chart(serie_duracao_tenant, color=tema.ROXO)
+
+        ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
+        try:
+            cobertura = carregar_cobertura_credenciais_cacheada()
+        except Exception as e:
+            cobertura = None
+            ui.nota(f"Não foi possível calcular a cobertura de credenciais agora: {e}")
+        if cobertura is None:
+            ui.nota("Indisponível neste ambiente (precisa rodar de dentro do monorepo "
+                    "`triagem_integracao_sankhya`, com `triagem_agente/` ao lado e `HUBSPOT_ACCESS_TOKEN` "
+                    "configurado).")
+        else:
+            total = cobertura["total_ativos"]
+            com = len(cobertura["com_credencial"])
+            st.metric("Tenants com credencial cadastrada", f"{com} / {total}")
+            if cobertura["sem_credencial"]:
+                with st.expander(f"Ver os {len(cobertura['sem_credencial'])} tenants sem credencial"):
+                    st.write(cobertura["sem_credencial"])
+
+        ui.nota(f"Atualizado em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} -- cache de 5min.")
 
 ui.rodape("Coleta automática a cada 4h · horários em UTC, como no sistema")
