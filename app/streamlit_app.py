@@ -75,12 +75,25 @@ def carregar_cobertura_credenciais_cacheada():
     return dados_correcoes.carregar_cobertura_credenciais()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def carregar_classificacao_cacheada(credenciais_json):
+    """Silencioso (`show_spinner=False`) e nunca propaga erro -- essa
+    classificação só ENRIQUECE a aba "Status atual" com uma tag de tipo de
+    erro predominante; se falhar, a tabela de status continua funcionando
+    normalmente, só sem essa coluna."""
+    try:
+        return dados_correcoes.carregar_classificacao_erros(credenciais_json)
+    except dados_correcoes.ErroFonteDados:
+        return []
+
+
 def recarregar():
     """Descarta o cache (para todos os usuários) e busca os CSVs/a planilha
     de novo no próximo carregamento."""
     carregar.clear()
     carregar_correcoes.clear()
     carregar_cobertura_credenciais_cacheada.clear()
+    carregar_classificacao_cacheada.clear()
 
 
 def sem_fuso(serie):
@@ -103,6 +116,25 @@ except dados.ErroFonteDados as e:
 agora = pd.Timestamp.now(tz=dados.FUSO)
 df_atual = regras.status_atual(historico, coletas, agora)
 ultima_execucao = coletas["executado_em"].max()
+
+# Tag de classificação por cliente (tipo_erro predominante, TODO tipo
+# detectado -- não só o automatizado) pra priorização -- enriquece
+# "Status atual" sem depender dele: falha em carregar não impede a tabela
+# de status de funcionar (só fica sem essa coluna).
+try:
+    classificacao = carregar_classificacao_cacheada(credenciais_sheets())
+except Exception:
+    classificacao = []
+predominantes = dados_correcoes.erro_predominante_por_tenant(classificacao)
+df_atual["tipo_erro_predominante"] = df_atual["tenant"].map(
+    lambda t: predominantes.get(t, {}).get("tipo_erro_predominante")
+)
+# Quantidade DESSE tipo específico (não o total de todos os tipos do
+# tenant) -- "multiplos_registros_ativos (12)" tem que significar 12
+# ocorrências de multiplos_registros_ativos, não o total geral do tenant.
+df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
+    lambda t: predominantes.get(t, {}).get("quantidade_predominante")
+)
 
 ui.cabecalho(ultima_execucao, (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)

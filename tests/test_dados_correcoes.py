@@ -61,6 +61,42 @@ def test_matriz_tenant_por_tipo_erro():
     }
 
 
+def test_erro_predominante_por_tenant_escolhe_o_tipo_com_mais_ocorrencias():
+    classificacao = [
+        {"tenant": "acme", "tipo_erro": "email_invalido", "quantidade": 3},
+        {"tenant": "acme", "tipo_erro": "multiplos_registros_ativos", "quantidade": 7},
+        {"tenant": "acme", "tipo_erro": "multiplos_registros_ativos", "quantidade": 2},  # 2a execução
+        {"tenant": "outra", "tipo_erro": "cpf_invalido", "quantidade": 1},
+    ]
+
+    predominantes = dados_correcoes.erro_predominante_por_tenant(classificacao)
+
+    assert predominantes == {
+        "acme": {"tipo_erro_predominante": "multiplos_registros_ativos", "quantidade_predominante": 9, "quantidade_total": 12},
+        "outra": {"tipo_erro_predominante": "cpf_invalido", "quantidade_predominante": 1, "quantidade_total": 1},
+    }
+
+
+def test_erro_predominante_por_tenant_lista_vazia():
+    assert dados_correcoes.erro_predominante_por_tenant([]) == {}
+
+
+def test_carregar_classificacao_erros_aba_inexistente_devolve_lista_vazia(monkeypatch):
+    import gspread
+
+    class _PlanilhaFake:
+        def worksheet(self, nome):
+            raise gspread.WorksheetNotFound(nome)
+
+    class _ClienteFake:
+        def open_by_key(self, spreadsheet_id):
+            return _PlanilhaFake()
+
+    monkeypatch.setattr(dados_correcoes, "_cliente_sheets", lambda credenciais_json: _ClienteFake())
+
+    assert dados_correcoes.carregar_classificacao_erros("fake-credencial") == []
+
+
 def test_taxa_sucesso_por_tenant_conta_qualquer_status_diferente_de_sucesso_como_falha():
     resumo = [
         {"tenant": "acme", "status": "sucesso"},

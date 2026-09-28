@@ -19,6 +19,7 @@ ESCOPOS_LEITURA = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 ID_PLANILHA_PADRAO = "1NQcosjqQDRD4PrMLgaRDQEz-iiNbl3M7K9Ih4Z6XwUc"
 GID_ABA_RESUMO = 0
 NOME_ABA_CORRECOES = "Correcoes"
+NOME_ABA_CLASSIFICACAO = "Classificacao"
 
 
 class ErroFonteDados(Exception):
@@ -88,6 +89,32 @@ def carregar_correcoes(
         raise ErroFonteDados(f'Não foi possível ler a aba "Correcoes": {e}') from e
 
 
+def carregar_classificacao_erros(
+    credenciais_json: str,
+    spreadsheet_id: str = ID_PLANILHA_PADRAO,
+    nome_aba: str = NOME_ABA_CLASSIFICACAO,
+) -> list[dict]:
+    """Todas as linhas da aba "Classificacao" -- uma por (tenant, tipo_erro)
+    DETECTADO em cada execução, ao contrário de `carregar_correcoes` (só o
+    que foi automaticamente aplicado): inclui também o que caiu em
+    revisao_manual (`multiplos_registros_ativos`, `transferencia_incompleta`,
+    "pendente:X"). Lista vazia se a aba ainda não existir."""
+    import gspread
+
+    cliente = _cliente_sheets(credenciais_json)
+    try:
+        planilha = cliente.open_by_key(spreadsheet_id)
+        try:
+            worksheet = planilha.worksheet(nome_aba)
+        except gspread.WorksheetNotFound:
+            return []
+        return worksheet.get_all_records()
+    except ErroFonteDados:
+        raise
+    except Exception as e:
+        raise ErroFonteDados(f'Não foi possível ler a aba "Classificacao": {e}') from e
+
+
 def agregar_quantidade_por_chave(correcoes: Iterable[dict], chave: str) -> dict[str, int]:
     """Soma `quantidade` agrupando por um campo (`tenant` ou `tipo_erro`)."""
     totais: dict[str, int] = {}
@@ -108,6 +135,31 @@ def matriz_tenant_por_tipo_erro(correcoes: Iterable[dict]) -> dict[str, dict[str
         matriz.setdefault(tenant, {})
         matriz[tenant][tipo_erro] = matriz[tenant].get(tipo_erro, 0) + quantidade
     return matriz
+
+
+def erro_predominante_por_tenant(classificacao: Iterable[dict]) -> dict[str, dict]:
+    """Pra cada tenant, soma `quantidade` por `tipo_erro` (todas as
+    execuções publicadas na aba "Classificacao") e devolve o `tipo_erro`
+    com mais ocorrências -- uma tag simples de "onde está a maior parte
+    dos erros desse cliente", pra priorização (ver "Status atual" no
+    dashboard). Usa `classificacao` (todo tipo_erro DETECTADO), não
+    `correcoes` (só o automatizado), justamente pra não esconder os tipos
+    que ainda caem em revisao_manual.
+
+    `{tenant: {"tipo_erro_predominante": str, "quantidade_predominante": int,
+    "quantidade_total": int}}` -- tenant sem nenhuma linha não aparece."""
+    matriz = matriz_tenant_por_tipo_erro(classificacao)
+    resultado: dict[str, dict] = {}
+    for tenant, contagem in matriz.items():
+        if not contagem:
+            continue
+        tipo_predominante = max(contagem, key=contagem.get)
+        resultado[tenant] = {
+            "tipo_erro_predominante": tipo_predominante,
+            "quantidade_predominante": contagem[tipo_predominante],
+            "quantidade_total": sum(contagem.values()),
+        }
+    return resultado
 
 
 def taxa_sucesso_por_tenant(resumo: Iterable[dict]) -> dict[str, dict]:
