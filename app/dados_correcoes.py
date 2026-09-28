@@ -224,6 +224,20 @@ def carregar_cobertura_credenciais(caminho_credenciais: str = "tenants_credencia
     except ImportError:
         return None
 
+    # Import acima funcionou -- estamos de fato rodando de dentro do
+    # monorepo. Nada mais neste app chama load_dotenv() (ele usa
+    # st.secrets pra tudo, não .env), então sem isso o .env da raiz do
+    # monorepo nunca chega a preencher HUBSPOT_ACCESS_TOKEN no ambiente,
+    # mesmo rodando localmente com o arquivo certinho. python-dotenv não é
+    # dependência declarada deste app (só do monorepo) -- import tardio e
+    # silencioso se não estiver instalado.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(raiz_monorepo / ".env")
+    except ImportError:
+        pass
+
     ativos = sorted(listar_tenants_com_integracao_ativa())
 
     credenciais: dict = {}
