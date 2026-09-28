@@ -11,12 +11,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import dados_correcoes  # noqa: E402
 
-# Só os testes de carregar_cobertura_credenciais precisam disto -- import
-# de triagem_agente.io.cliente_hubspot só funciona quando este app roda de
-# dentro do monorepo (dois níveis acima de tests/), não no repositório
-# público separado (ver docstring de carregar_cobertura_credenciais).
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
 
 def test_agregar_quantidade_por_chave_soma_por_tenant():
     correcoes = [
@@ -168,15 +162,26 @@ def test_carregar_correcoes_aba_inexistente_devolve_lista_vazia(monkeypatch):
     assert dados_correcoes.carregar_correcoes("fake-credencial") == []
 
 
-def test_carregar_cobertura_credenciais_cruza_hubspot_com_arquivo(monkeypatch, tmp_path):
-    caminho = tmp_path / "tenants_credenciais.json"
-    caminho.write_text('{"acme": {"client_id": "x", "client_secret": "y"}}', encoding="utf-8")
+def test_carregar_cobertura_credenciais_le_snapshot_da_planilha(monkeypatch):
+    class _WorksheetFake:
+        def get_all_records(self):
+            return [
+                {"data_hora_utc": "2026-09-28T16:00:00+00:00", "tenant": "acme", "tem_credencial": "TRUE"},
+                {"data_hora_utc": "2026-09-28T16:00:00+00:00", "tenant": "outra", "tem_credencial": "FALSE"},
+                {"data_hora_utc": "2026-09-28T16:00:00+00:00", "tenant": "terceira", "tem_credencial": False},
+            ]
 
-    import triagem_agente.io.cliente_hubspot as cliente_hubspot
+    class _PlanilhaFake:
+        def worksheet(self, nome):
+            return _WorksheetFake()
 
-    monkeypatch.setattr(cliente_hubspot, "listar_tenants_com_integracao_ativa", lambda: ["acme", "outra", "terceira"])
+    class _ClienteFake:
+        def open_by_key(self, spreadsheet_id):
+            return _PlanilhaFake()
 
-    cobertura = dados_correcoes.carregar_cobertura_credenciais(caminho_credenciais=str(caminho))
+    monkeypatch.setattr(dados_correcoes, "_cliente_sheets", lambda credenciais_json: _ClienteFake())
+
+    cobertura = dados_correcoes.carregar_cobertura_credenciais("fake-credencial")
 
     assert cobertura == {
         "total_ativos": 3,
@@ -185,13 +190,17 @@ def test_carregar_cobertura_credenciais_cruza_hubspot_com_arquivo(monkeypatch, t
     }
 
 
-def test_carregar_cobertura_credenciais_sem_arquivo_trata_como_ninguem_tem_credencial(monkeypatch, tmp_path):
-    caminho_inexistente = tmp_path / "nao_existe.json"
+def test_carregar_cobertura_credenciais_aba_inexistente_devolve_none(monkeypatch):
+    import gspread
 
-    import triagem_agente.io.cliente_hubspot as cliente_hubspot
+    class _PlanilhaFake:
+        def worksheet(self, nome):
+            raise gspread.WorksheetNotFound(nome)
 
-    monkeypatch.setattr(cliente_hubspot, "listar_tenants_com_integracao_ativa", lambda: ["acme"])
+    class _ClienteFake:
+        def open_by_key(self, spreadsheet_id):
+            return _PlanilhaFake()
 
-    cobertura = dados_correcoes.carregar_cobertura_credenciais(caminho_credenciais=str(caminho_inexistente))
+    monkeypatch.setattr(dados_correcoes, "_cliente_sheets", lambda credenciais_json: _ClienteFake())
 
-    assert cobertura == {"total_ativos": 1, "com_credencial": [], "sem_credencial": ["acme"]}
+    assert dados_correcoes.carregar_cobertura_credenciais("fake-credencial") is None

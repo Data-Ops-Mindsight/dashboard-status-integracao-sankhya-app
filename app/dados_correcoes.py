@@ -1,7 +1,8 @@
 """Leitura do relatório que `automacao/aplicador/relatorio_sheets.py`
-publica no Google Sheets (abas "Resumo" e "Correcoes") -- indicadores da
-triagem/automação de correção, migrados do antigo `dashboard/` do
-repositório de origem (`triagem_integracao_sankhya`).
+publica no Google Sheets (abas "Resumo", "Correcoes", "Classificacao" e
+"CoberturaCredenciais") -- indicadores da triagem/automação de correção,
+migrados do antigo `dashboard/` do repositório de origem
+(`triagem_integracao_sankhya`).
 
 Sem dependência do Streamlit (mesma filosofia de `dados.py`, o módulo já
 existente que lê os CSVs de status): a credencial vem de fora, como
@@ -20,6 +21,7 @@ ID_PLANILHA_PADRAO = "1NQcosjqQDRD4PrMLgaRDQEz-iiNbl3M7K9Ih4Z6XwUc"
 GID_ABA_RESUMO = 0
 NOME_ABA_CORRECOES = "Correcoes"
 NOME_ABA_CLASSIFICACAO = "Classificacao"
+NOME_ABA_COBERTURA_CREDENCIAIS = "CoberturaCredenciais"
 
 
 class ErroFonteDados(Exception):
@@ -200,43 +202,51 @@ def duracao_media_por_tenant(resumo: Iterable[dict]) -> dict[str, float]:
     return {tenant: round(somas[tenant] / contagens[tenant], 1) for tenant in somas}
 
 
-def carregar_cobertura_credenciais(caminho_credenciais: str = "tenants_credenciais.json") -> Optional[dict]:
-    """Compara os tenants com integração ativa no HubSpot contra quem já
-    tem credencial OAuth em `tenants_credenciais.json` -- cálculo ao vivo.
+def carregar_cobertura_credenciais(
+    credenciais_json: str,
+    spreadsheet_id: str = ID_PLANILHA_PADRAO,
+    nome_aba: str = NOME_ABA_COBERTURA_CREDENCIAIS,
+) -> Optional[dict]:
+    """Snapshot publicado por `automacao/aplicador/pipeline.py`
+    (`relatorio_sheets.publicar_cobertura_credenciais`) -- quais tenants
+    ativos no HubSpot já têm credencial OAuth cadastrada
+    (`tenants_credenciais.json`).
 
-    Só disponível quando `triagem_agente/` está acessível ao lado deste
-    repositório (o monorepo privado onde este módulo nasceu) -- devolve
-    `None` quando não está (ex.: deploy separado a partir do repositório
-    público deste app, sem `triagem_agente/` ao lado). Quem chama decide
-    o que mostrar nesse caso."""
-    import sys
-    from pathlib import Path
+    Lê da planilha em vez de consultar o HubSpot/arquivo de credenciais
+    diretamente -- funciona em qualquer lugar que já lê a planilha de
+    indicadores (mesma credencial de `carregar_resumo`/`carregar_correcoes`),
+    inclusive o deploy público deste app, que nunca teve acesso a
+    `triagem_agente/` nem ao arquivo de credenciais (essa versão antiga,
+    que consultava ao vivo, só funcionava rodando de dentro do monorepo --
+    substituída por isso).
 
-    # dashboard_status_app/app/dados_correcoes.py -> repositório de
-    # origem só existe 3 níveis acima quando este app roda de dentro do
-    # monorepo (triagem_integracao_sankhya/dashboard_status_app/app/).
-    raiz_monorepo = Path(__file__).resolve().parents[2]
-    if str(raiz_monorepo) not in sys.path:
-        sys.path.insert(0, str(raiz_monorepo))
+    `None` se a aba ainda não existir (nenhuma execução publicou ainda)."""
+    import gspread
 
+    cliente = _cliente_sheets(credenciais_json)
     try:
-        from triagem_agente.io.cliente_hubspot import listar_tenants_com_integracao_ativa
-    except ImportError:
+        planilha = cliente.open_by_key(spreadsheet_id)
+        try:
+            worksheet = planilha.worksheet(nome_aba)
+        except gspread.WorksheetNotFound:
+            return None
+        linhas = worksheet.get_all_records()
+    except ErroFonteDados:
+        raise
+    except Exception as e:
+        raise ErroFonteDados(f'Não foi possível ler a aba "CoberturaCredenciais": {e}') from e
+
+    if not linhas:
         return None
 
-    ativos = sorted(listar_tenants_com_integracao_ativa())
-
-    credenciais: dict = {}
-    if Path(caminho_credenciais).exists():
-        with open(caminho_credenciais, "r", encoding="utf-8") as arquivo:
-            credenciais = json.load(arquivo)
-    tenants_com_credencial = set(credenciais.keys())
-
-    com_credencial = [t for t in ativos if t in tenants_com_credencial]
-    sem_credencial = [t for t in ativos if t not in tenants_com_credencial]
-
+    com_credencial = [
+        linha["tenant"] for linha in linhas if str(linha.get("tem_credencial")).strip().upper() == "TRUE"
+    ]
+    sem_credencial = [
+        linha["tenant"] for linha in linhas if str(linha.get("tem_credencial")).strip().upper() != "TRUE"
+    ]
     return {
-        "total_ativos": len(ativos),
+        "total_ativos": len(linhas),
         "com_credencial": com_credencial,
         "sem_credencial": sem_credencial,
     }

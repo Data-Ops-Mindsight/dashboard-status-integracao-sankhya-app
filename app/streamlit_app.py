@@ -70,9 +70,9 @@ def carregar_correcoes(credenciais_json):
     return dados_correcoes.carregar_resumo(credenciais_json), dados_correcoes.carregar_correcoes(credenciais_json)
 
 
-@st.cache_data(ttl=300, show_spinner="Consultando cobertura de credenciais…")
-def carregar_cobertura_credenciais_cacheada():
-    return dados_correcoes.carregar_cobertura_credenciais()
+@st.cache_data(ttl=300, show_spinner="Carregando cobertura de credenciais…")
+def carregar_cobertura_credenciais_cacheada(credenciais_json):
+    return dados_correcoes.carregar_cobertura_credenciais(credenciais_json)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -432,14 +432,12 @@ with aba_correcoes:
 
         ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
         try:
-            cobertura = carregar_cobertura_credenciais_cacheada()
-        except Exception as e:
+            cobertura = carregar_cobertura_credenciais_cacheada(credenciais_json)
+        except dados_correcoes.ErroFonteDados as e:
             cobertura = None
-            ui.nota(f"Não foi possível calcular a cobertura de credenciais agora: {e}")
+            ui.nota(f"Não foi possível carregar a cobertura de credenciais agora: {e}")
         if cobertura is None:
-            ui.nota("Indisponível neste ambiente (precisa rodar de dentro do monorepo "
-                    "`triagem_integracao_sankhya`, com `triagem_agente/` ao lado e `HUBSPOT_ACCESS_TOKEN` "
-                    "configurado).")
+            ui.nota("Ainda não publicada -- aparece depois da próxima execução agendada do pipeline.")
         else:
             total = cobertura["total_ativos"]
             com = len(cobertura["com_credencial"])

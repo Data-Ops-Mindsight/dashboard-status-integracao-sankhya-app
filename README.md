@@ -30,11 +30,13 @@ streamlit run app/streamlit_app.py
 - Sem `[dados]`, o app lê de uma pasta local (`DADOS_PASTA` ou `./dados`, ignorada pelo git).
 - Sem `[login]`, o app não abre. Para desenvolver sem login: `DASHBOARD_SEM_LOGIN=1`.
 
-A aba "Correções aplicadas" também calcula, ao vivo, a cobertura de credenciais
-(`tenants_credenciais.json` × tenants ativos no HubSpot) -- só funciona quando este app roda de
-dentro do monorepo `triagem_integracao_sankhya` (com `triagem_agente/` ao lado e
-`HUBSPOT_ACCESS_TOKEN` no ambiente); no deploy público, separado deste repositório, a seção
-aparece como indisponível, sem quebrar o resto do app.
+A aba "Correções aplicadas" também mostra a cobertura de credenciais
+(`tenants_credenciais.json` × tenants ativos no HubSpot) -- um SNAPSHOT publicado 1x/dia pelo
+pipeline agendado (`automacao/aplicador/pipeline.py`, via
+`relatorio_sheets.publicar_cobertura_credenciais`), lido da mesma planilha de indicadores. Funciona
+em qualquer lugar que já lê essa planilha, inclusive no deploy público -- este app nunca chama o
+HubSpot nem lê o arquivo de credenciais diretamente (só quem publica, de dentro do monorepo, tem
+acesso aos dois).
 
 ## Deploy (Streamlit Community Cloud)
 
