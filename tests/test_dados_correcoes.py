@@ -8,6 +8,8 @@ Dados fictícios (nenhum tenant/e-mail real).
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import dados_correcoes  # noqa: E402
 
@@ -169,6 +171,13 @@ def test_carregar_correcoes_aba_inexistente_devolve_lista_vazia(monkeypatch):
 
 
 def test_carregar_cobertura_credenciais_cruza_hubspot_com_arquivo(monkeypatch, tmp_path):
+    # Só existe (e só é testável) rodando de dentro do monorepo privado
+    # (triagem_integracao_sankhya) -- no repositório público separado
+    # deste app (deploy via subtree), triagem_agente/ não existe ao lado,
+    # e carregar_cobertura_credenciais já degrada pra None nesse caso (ver
+    # sua docstring). Pula em vez de falhar o CI de lá.
+    pytest.importorskip("triagem_agente.io.cliente_hubspot")
+
     caminho = tmp_path / "tenants_credenciais.json"
     caminho.write_text('{"acme": {"client_id": "x", "client_secret": "y"}}', encoding="utf-8")
 
@@ -186,6 +195,8 @@ def test_carregar_cobertura_credenciais_cruza_hubspot_com_arquivo(monkeypatch, t
 
 
 def test_carregar_cobertura_credenciais_sem_arquivo_trata_como_ninguem_tem_credencial(monkeypatch, tmp_path):
+    pytest.importorskip("triagem_agente.io.cliente_hubspot")
+
     caminho_inexistente = tmp_path / "nao_existe.json"
 
     import triagem_agente.io.cliente_hubspot as cliente_hubspot
