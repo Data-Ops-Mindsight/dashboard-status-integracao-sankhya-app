@@ -96,6 +96,26 @@ def recarregar():
     carregar_classificacao_cacheada.clear()
 
 
+def grafico_barras_por_dia(df_dia, titulo_valor, formato=",.0f", detalhe_registros=None):
+    """Barras por dia (eixo dd/mm), no padrão visual do dashboard."""
+    tooltip = [alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"),
+               alt.Tooltip("valor:Q", title=titulo_valor, format=formato)]
+    if detalhe_registros:
+        tooltip.append(alt.Tooltip("registros:Q", title=detalhe_registros))
+    # Domínio explícito: dias sem valor (ex.: sem execução) continuam no eixo, só sem barra
+    # Mais de ~1 ano no eixo: inclui o ano para dias com o mesmo dd/mm não colidirem
+    formato_dia = "%d/%m/%y" if len(df_dia) > 300 else "%d/%m"
+    df_dia = df_dia.assign(dia_rotulo=df_dia["dia"].dt.strftime(formato_dia))
+    dias = df_dia["dia_rotulo"].tolist()
+    grafico = alt.Chart(df_dia).mark_bar(color=tema.ROXO, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+        x=alt.X("dia_rotulo:N", title=None, sort=dias, scale=alt.Scale(domain=dias),
+                axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
+        y=alt.Y("valor:Q", title=titulo_valor, axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
+        tooltip=tooltip,
+    ).properties(height=260)
+    st.altair_chart(tema.configurar_grafico(grafico), width="stretch", theme=None)
+
+
 def sem_fuso(serie):
     """Altair/Vega interpreta datas sem fuso como horário local do navegador."""
     return serie.dt.tz_localize(None)
@@ -395,9 +415,10 @@ with aba_correcoes:
         if df_correcoes.empty:
             ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
         else:
-            df_correcoes["data"] = pd.to_datetime(df_correcoes["data_hora_utc"], errors="coerce").dt.date
-            por_dia = df_correcoes.groupby("data")["quantidade"].sum()
-            st.line_chart(por_dia, color=tema.ROXO)
+            por_dia = regras.agregar_por_dia(df_correcoes, "data_hora_utc", "quantidade", "sum",
+                                             preencher_dias_vazios=True)
+            grafico_barras_por_dia(por_dia, "Correções")
+            ui.nota("Total de correções aplicadas em cada dia (UTC).")
 
         ui.secao("Taxa de sucesso × falha por tenant")
         taxas = dados_correcoes.taxa_sucesso_por_tenant(resumo)
@@ -413,15 +434,14 @@ with aba_correcoes:
         if duracoes.empty:
             ui.nota("Nenhuma execução com duração registrada ainda.")
         else:
-            df_duracao_por_run = (
-                df_resumo.assign(duracao_execucao_s=pd.to_numeric(df_resumo["duracao_execucao_s"], errors="coerce"))
-                .dropna(subset=["duracao_execucao_s"])
-                .drop_duplicates(subset=["data_hora_utc"])
-                .assign(data_hora_utc=lambda d: pd.to_datetime(d["data_hora_utc"], errors="coerce"))
-                .set_index("data_hora_utc")["duracao_execucao_s"]
-                / 60
-            )
-            st.line_chart(df_duracao_por_run.rename("duração (min)"), color=tema.ROXO)
+            # Uma linha por run (o resumo tem uma linha por tenant de cada run), em minutos
+            runs = (df_resumo.drop_duplicates(subset=["data_hora_utc"])
+                    .assign(duracao_min=lambda d: pd.to_numeric(d["duracao_execucao_s"], errors="coerce") / 60))
+            duracao_por_dia = regras.agregar_por_dia(runs, "data_hora_utc", "duracao_min", "mean",
+                                                     preencher_dias_vazios=True)
+            grafico_barras_por_dia(duracao_por_dia, "Duração média (min)", formato=".0f",
+                                   detalhe_registros="Execuções no dia")
+            ui.nota("Duração média das execuções de cada dia (UTC).")
 
         ui.secao("Tempo de execução por tenant")
         ui.nota("Média de quanto tempo CADA tenant levou sozinho (login incluso), entre as execuções "

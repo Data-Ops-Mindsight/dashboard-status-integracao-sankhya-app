@@ -137,3 +137,32 @@ def test_erro_predominante_so_quando_ultimo_sync_deu_erro():
         assert pd.isna(r.loc[tenant, "tipo_erro_predominante"])
         assert pd.isna(r.loc[tenant, "qtd_tipo_predominante"])
     assert df["tipo_erro_predominante"].tolist() == ["cpf_invalido"] * 5  # não altera o original
+
+
+def test_agregar_por_dia_soma_e_preenche_dias_sem_registro():
+    df = pd.DataFrame({
+        "data_hora_utc": ["2026-09-28T10:00:00Z", "2026-09-28T18:30:00Z", "2026-09-30T02:00:00Z", "invalida"],
+        "quantidade": [3, 2, 5, 99],
+    })
+    r = regras.agregar_por_dia(df, "data_hora_utc", "quantidade", "sum", preencher_dias_vazios=True)
+    assert r["dia"].dt.strftime("%d/%m").tolist() == ["28/09", "29/09", "30/09"]
+    assert r["valor"].tolist() == [5, 0, 5]          # 29/09 sem correção = 0; data inválida ignorada
+    assert r["registros"].tolist() == [2, 0, 1]
+
+
+def test_agregar_por_dia_media_mantem_dia_sem_execucao_sem_valor():
+    df = pd.DataFrame({"data_hora_utc": ["2026-09-28T01:00:00Z", "2026-09-28T23:00:00Z", "2026-09-30T12:00:00Z"],
+                       "duracao_min": [10, 20, 40]})
+    r = regras.agregar_por_dia(df, "data_hora_utc", "duracao_min", "mean", preencher_dias_vazios=True)
+    assert r["dia"].dt.strftime("%d/%m").tolist() == ["28/09", "29/09", "30/09"]
+    assert r.loc[0, "valor"] == 15 and r.loc[2, "valor"] == 40
+    assert pd.isna(r.loc[1, "valor"])                 # sem execução: sem barra (não é zero)
+    assert r["registros"].tolist() == [2, 0, 1]
+
+    sem_preencher = regras.agregar_por_dia(df, "data_hora_utc", "duracao_min", "mean")
+    assert sem_preencher["dia"].dt.strftime("%d/%m").tolist() == ["28/09", "30/09"]
+
+
+def test_agregar_por_dia_vazio():
+    r = regras.agregar_por_dia(pd.DataFrame({"d": [], "v": []}), "d", "v")
+    assert r.empty and list(r.columns) == ["dia", "valor", "registros"]

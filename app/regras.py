@@ -138,3 +138,28 @@ def so_quando_ultimo_sync_com_erro(df, colunas):
     for coluna in colunas:
         df[coluna] = df[coluna].where(com_erro)  # where converte o tipo (int -> float/NaN) também no pandas 3
     return df
+
+
+def agregar_por_dia(df, coluna_data, coluna_valor, agregacao="sum", preencher_dias_vazios=False):
+    """Uma linha por dia (UTC): colunas `dia` (Timestamp à meia-noite), `valor` e `registros`.
+
+    preencher_dias_vazios=True mantém no eixo os dias sem registro: com valor 0 numa soma
+    (ex.: dia sem correção) e sem valor numa média (ex.: dia sem execução, sem barra).
+    """
+    datas = pd.to_datetime(df[coluna_data], errors="coerce", utc=True)
+    base = pd.DataFrame({
+        "dia": datas.dt.tz_localize(None).dt.normalize(),
+        "valor": pd.to_numeric(df[coluna_valor], errors="coerce"),
+    }).dropna(subset=["dia", "valor"])
+    if base.empty:
+        return pd.DataFrame(columns=["dia", "valor", "registros"])
+
+    por_dia = base.groupby("dia").agg(valor=("valor", agregacao), registros=("valor", "size"))
+    if preencher_dias_vazios:
+        todos = pd.date_range(por_dia.index.min(), por_dia.index.max(), freq="D", name="dia")
+        por_dia = por_dia.reindex(todos)
+        por_dia["registros"] = por_dia["registros"].fillna(0).astype(int)
+        if agregacao == "sum":
+            por_dia["valor"] = por_dia["valor"].fillna(0)
+    return por_dia.reset_index()
+
