@@ -135,6 +135,9 @@ df_atual["tipo_erro_predominante"] = df_atual["tenant"].map(
 df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
     lambda t: predominantes.get(t, {}).get("quantidade_predominante")
 )
+# Só para quem está com erro agora: se o último sync deu certo (ou está pendente),
+# a coluna fica vazia.
+df_atual = regras.so_quando_ultimo_sync_com_erro(df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante"])
 
 ui.cabecalho(ultima_execucao, (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)

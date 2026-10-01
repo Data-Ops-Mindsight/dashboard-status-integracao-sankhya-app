@@ -136,7 +136,7 @@ def tabela_status(df):
                  if linha.falha_coleta else "")
         itens = "—" if pd.isna(linha.itens) else f"{int(linha.itens):,}".replace(",", ".")
         coluna_classificacao = (
-            f"<td title='Tipo de erro mais frequente já detectado nesse cliente, entre os DETECTADOS -- inclusive os que ainda caem em revisão manual'>"
+            f"<td title='Tipo de erro mais frequente já detectado nesse cliente (inclusive os que ainda caem em revisão manual). Só aparece quando o último sync deu erro.'>"
             f"{_tag_erro_predominante(linha.tipo_erro_predominante, linha.qtd_tipo_predominante)}</td>"
             if tem_classificacao else ""
         )

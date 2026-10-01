@@ -125,3 +125,16 @@ def status_diario(historico):
     """Status do último sync de cada tenant em cada dia (base do mapa de calor)."""
     ordenado = historico.sort_values(["tenant", "data_sync", "created", "id_sync"])
     return ordenado.groupby(["tenant", "data_sync"], as_index=False).last()
+
+
+def so_quando_ultimo_sync_com_erro(df, colunas):
+    """Esvazia `colunas` nas linhas cujo último sync não terminou em erro.
+
+    Ex.: o erro predominante só faz sentido para quem está com erro agora —
+    um cliente cujo último sync deu certo não deve mostrar um tipo de erro.
+    """
+    df = df.copy()
+    com_erro = df["status_ultimo"] == "error"
+    for coluna in colunas:
+        df[coluna] = df[coluna].where(com_erro)  # where converte o tipo (int -> float/NaN) também no pandas 3
+    return df

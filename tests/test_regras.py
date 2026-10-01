@@ -120,3 +120,20 @@ def test_ordem_de_exibicao_tem_os_mesmos_estados():
     assert regras.ESTADOS_EXIBICAO == [regras.SUCESSO, regras.ERRO, regras.PENDENTE,
                                        regras.PENDENTE_PROBLEMA, regras.SEM_SYNC]
     assert sorted(regras.ESTADOS_EXIBICAO) == sorted(regras.ESTADOS)
+
+
+def test_erro_predominante_so_quando_ultimo_sync_deu_erro():
+    df = pd.DataFrame({
+        "tenant": ["com_erro", "ok", "pendente", "sem_sync_com_erro", "nunca_sincronizou"],
+        "status_ultimo": ["error", "success", "pending", "error", None],
+        "tipo_erro_predominante": ["cpf_invalido"] * 5,
+        "qtd_tipo_predominante": [3, 3, 3, 3, 3],
+    })
+    r = regras.so_quando_ultimo_sync_com_erro(df, ["tipo_erro_predominante", "qtd_tipo_predominante"]).set_index("tenant")
+
+    assert r.loc["com_erro", "tipo_erro_predominante"] == "cpf_invalido"
+    assert r.loc["sem_sync_com_erro", "qtd_tipo_predominante"] == 3   # último sync (antigo) foi erro
+    for tenant in ("ok", "pendente", "nunca_sincronizou"):
+        assert pd.isna(r.loc[tenant, "tipo_erro_predominante"])
+        assert pd.isna(r.loc[tenant, "qtd_tipo_predominante"])
+    assert df["tipo_erro_predominante"].tolist() == ["cpf_invalido"] * 5  # não altera o original
