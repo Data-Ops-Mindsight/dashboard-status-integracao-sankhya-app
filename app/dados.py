@@ -16,6 +16,8 @@ import requests
 
 # Horários como vêm do sistema (a API devolve UTC) — sem conversão para Brasília
 FUSO = "UTC"
+# Exceção: a data da última coleta é exibida no horário de Brasília
+FUSO_COLETA = "America/Sao_Paulo"
 PASTA_DADOS = Path(os.environ.get("DADOS_PASTA", Path(__file__).resolve().parents[1] / "dados"))
 
 ARQUIVO_HISTORICO = "historico_sync.csv"

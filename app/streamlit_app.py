@@ -159,7 +159,7 @@ df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
 # a coluna fica vazia.
 df_atual = regras.so_quando_ultimo_sync_com_erro(df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante"])
 
-ui.cabecalho(ultima_execucao, (agora - ultima_execucao) / pd.Timedelta(hours=1),
+ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)
 col_usuario, col_recarregar, col_sair = st.columns([6.4, 1.6, 1], vertical_alignment="center")
 if usuario:
@@ -471,4 +471,4 @@ with aba_correcoes:
 
         ui.nota(f"Atualizado em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} -- cache de 5min.")
 
-ui.rodape("Coleta automática a cada 4h · horários em UTC, como no sistema")
+ui.rodape("Coleta automática a cada 4h · horários dos syncs em UTC, como no sistema · última coleta no horário de Brasília")
