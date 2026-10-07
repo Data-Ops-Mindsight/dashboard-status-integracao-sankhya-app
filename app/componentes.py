@@ -107,13 +107,6 @@ def _trilha_syncs(status_lista, qtd=regras.QTD_ULTIMOS_SYNCS):
     return f"<span class='ms-trilha' title='Mais antigo → mais recente'>{vazios}{quadros}</span>"
 
 
-def _barra_erro(taxa):
-    if pd.isna(taxa):
-        return "<span class='ms-quando'>—</span>"
-    return (f"<span class='ms-barra'><span class='ms-trilho'><span class='ms-preenche' style='width:{taxa:.0%}'></span></span>"
-            f"<span>{taxa:.0%}</span></span>")
-
-
 def _tag_erro_predominante(tipo_erro, quantidade_total):
     # df_atual vem de um merge (tenant sem classificação publicada ainda) --
     # a coluna fica com NaN (float), não None, então `pd.isna` é
@@ -155,14 +148,13 @@ def tabela_status(df):
             f"<td>{selo(linha.estado)}</td>"
             f"<td>{formatar_data_hora(linha.ultimo_sync)} <span class='ms-quando'>{formatar_ha_quanto(linha.horas_desde)}</span></td>"
             f"<td class='ms-num'>{itens}</td>"
-            f"<td>{_barra_erro(linha.taxa_erro_7d)}</td>"
             f"<td class='ms-num'>{linha.erros_seguidos or '—'}</td>"
             f"<td>{_trilha_syncs(linha.ultimos_syncs)}</td>"
             f"{coluna_classificacao}"
             "</tr>"
         )
 
-    cabecalhos = ["Cliente", "Status", "Último sync", "Itens afetados", "Erro 7d", "Erros seguidos", "Últimos 7 syncs"]
+    cabecalhos = ["Cliente", "Status", "Último sync", "Itens afetados", "Erros seguidos", "Últimos 7 syncs"]
     if tem_classificacao:
         cabecalhos.append("Erro predominante")
     ths = "".join(f"<th{' class=ms-num' if c in ('Itens afetados', 'Erros seguidos') else ''}>{c}</th>" for c in cabecalhos)

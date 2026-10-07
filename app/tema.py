@@ -133,12 +133,6 @@ CSS = f"""
 .ms-quadro {{ width: 12px; height: 12px; border-radius: 3px; background: var(--cor); }}
 .ms-quadro.ms-vazio {{ background: transparent; box-shadow: inset 0 0 0 1px {BORDA}; }}
 
-/* Barra de taxa de erro */
-.ms-barra {{ display: inline-flex; align-items: center; gap: 8px; }}
-.ms-barra .ms-trilho {{ display: block; width: 64px; height: 6px; border-radius: 3px; background: {TRILHA}; overflow: hidden; }}
-.ms-barra .ms-preenche {{ display: block; height: 100%; border-radius: 3px; background: {cor(regras.ERRO)}; }}
-.ms-barra > span:last-child {{ min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }}
-
 /* Legenda (HTML, acima dos gráficos) */
 .ms-legenda {{ display: flex; gap: 16px; flex-wrap: wrap; font-size: .82rem; color: {GRAFITE}; margin: 0 0 8px; }}
 .ms-legenda span {{ display: inline-flex; align-items: center; gap: 6px; }}

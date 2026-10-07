@@ -35,7 +35,7 @@ ATALHOS_PERIODO = {"7 dias": 7, "14 dias": 14, "30 dias": 30, "Tudo": None}
 ORDENACOES = {
     "Gravidade": (["estado", "taxa_erro_7d", "tenant"], [True, False, True]),
     "Cliente": (["tenant"], [True]),
-    "Taxa de erro": (["taxa_erro_7d", "tenant"], [False, True]),
+    "Taxa de erro (7 dias)": (["taxa_erro_7d", "tenant"], [False, True]),
     "Último sync": (["ultimo_sync", "tenant"], [True, True]),
 }
 
@@ -193,7 +193,7 @@ with aba_atual:
     contagem = df_atual["estado"].value_counts()
     ui.cartoes_estado(contagem, len(df_atual))
 
-    col_status, col_cliente, col_ordem = st.columns([5, 3, 1.4], vertical_alignment="bottom")
+    col_status, col_cliente, col_ordem = st.columns([4, 3, 2.6], vertical_alignment="bottom")
     estados_filtro = col_status.pills(
         "Status", regras.ESTADOS_EXIBICAO, selection_mode="multi",
         format_func=lambda e: f"{e} ({int(contagem.get(e, 0))})",
@@ -210,7 +210,7 @@ with aba_atual:
     tabela = tabela.sort_values(colunas, ascending=crescente, na_position="last")
 
     ui.tabela_status(tabela)
-    ui.nota(f"{len(tabela)} de {len(df_atual)} clientes · Erro 7d considera só syncs finalizados (pending fora da conta)"
+    ui.nota(f"{len(tabela)} de {len(df_atual)} clientes · a ordenação por taxa de erro (7 dias) considera só syncs finalizados (pending fora da conta)"
             " · ⚠️ = a última coleta deste cliente falhou na API")
 
 # =============================================================================
