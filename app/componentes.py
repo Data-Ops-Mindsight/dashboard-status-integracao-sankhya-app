@@ -127,14 +127,21 @@ def _titulo_erro_predominante(data_coleta):
 
 
 COLUNA_QTD_ERROS = "Qtd. de erros"
+COLUNA_DIAS_SEGUIDOS = "Dias seguidos com erro"
 DICAS_COLUNAS = {
+    COLUNA_DIAS_SEGUIDOS: "Há quantos dias seguidos o cliente está com erro: dias distintos (UTC) da sequência atual "
+                          "de syncs com erro, até o mais recente. Syncs repetidos no mesmo dia contam um dia só.",
     COLUNA_QTD_ERROS: "Registros com erro no ÚLTIMO sync do cliente (sync_history_items + sync_datas). "
                       "Só aparece quando o último sync deu erro.",
 }
 
 
+COLUNAS_QUE_QUEBRAM_LINHA = (COLUNA_DIAS_SEGUIDOS,)
+
+
 def _th(titulo, numerica, dica=None):
-    classe = " class=ms-num" if numerica else ""
+    classes = (["ms-num"] if numerica else []) + (["ms-quebra"] if titulo in COLUNAS_QUE_QUEBRAM_LINHA else [])
+    classe = f" class='{' '.join(classes)}'" if classes else ""
     atributo_dica = f" title='{escape(dica, quote=True)}'" if dica else ""
     return f"<th{classe}{atributo_dica}>{titulo}</th>"
 
@@ -170,7 +177,7 @@ def tabela_status(df):
             f"<td>{formatar_data_hora(linha.ultimo_sync)} <span class='ms-quando'>{formatar_ha_quanto(linha.horas_desde)}</span></td>"
             f"<td class='ms-num'>{itens}</td>"
             f"{coluna_qtd_erros}"
-            f"<td class='ms-num'>{linha.erros_seguidos or '—'}</td>"
+            f"<td class='ms-num'>{linha.dias_seguidos_erro or '—'}</td>"
             f"<td>{_trilha_syncs(linha.ultimos_syncs)}</td>"
             f"{coluna_classificacao}"
             "</tr>"
@@ -179,10 +186,10 @@ def tabela_status(df):
     cabecalhos = ["Cliente", "Status", "Último sync", "Itens afetados"]
     if tem_qtd_erros:
         cabecalhos.append(COLUNA_QTD_ERROS)
-    cabecalhos += ["Erros seguidos", "Últimos 7 syncs"]
+    cabecalhos += [COLUNA_DIAS_SEGUIDOS, "Últimos 7 syncs"]
     if tem_classificacao:
         cabecalhos.append("Erro predominante")
-    numericas = ("Itens afetados", COLUNA_QTD_ERROS, "Erros seguidos")
+    numericas = ("Itens afetados", COLUNA_QTD_ERROS, COLUNA_DIAS_SEGUIDOS)
     ths = "".join(_th(c, c in numericas, DICAS_COLUNAS.get(c)) for c in cabecalhos)
     _render(f"<div class='ms-tabela-wrap'><table class='ms-tabela'><thead><tr>{ths}</tr></thead>"
             f"<tbody>{''.join(linhas)}</tbody></table></div>")

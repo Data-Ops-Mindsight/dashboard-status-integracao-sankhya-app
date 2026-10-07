@@ -323,7 +323,7 @@ with aba_historico:
     ui.cartoes_metricas([
         ("Status atual", estado_atual.iloc[0] if not estado_atual.empty else "fora da coleta", None),
         ("Taxa de erro (7 dias)", f"{taxa:.0%}" if pd.notna(taxa) else "—", "entre syncs finalizados"),
-        ("Erros seguidos", regras.erros_seguidos(syncs_todos), "a partir do mais recente"),
+        ("Dias seguidos com erro", regras.dias_seguidos_com_erro(syncs_todos), "até o sync mais recente"),
         ("Último sucesso", ui.formatar_data_hora(ultimo_ok),
          ui.formatar_ha_quanto((agora - ultimo_ok) / pd.Timedelta(hours=1)) if pd.notna(ultimo_ok) else "nenhum no histórico"),
         ("Syncs no período", len(syncs), f"{inicio:%d/%m} a {fim:%d/%m}"),

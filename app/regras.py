@@ -55,14 +55,19 @@ def taxa_erro(syncs_tenant, agora, janela=JANELA_TAXA_ERRO):
     return (finalizados["status"] == "error").mean()
 
 
-def erros_seguidos(syncs_tenant):
-    """Quantidade de erros consecutivos a partir do sync mais recente."""
-    contagem = 0
-    for status in syncs_tenant["status"]:
+def dias_seguidos_com_erro(syncs_tenant):
+    """Quantos DIAS (UTC) distintos tem a sequência atual de syncs com erro, contada a partir do
+    sync mais recente e parando no primeiro que não deu erro.
+
+    Dois syncs com erro no mesmo dia (reprocessamento) contam um dia só; dia sem nenhum sync no meio
+    da sequência não conta (não houve erro naquele dia, mas também não houve sucesso que a quebrasse).
+    `syncs_tenant` vem ordenado do mais recente para o mais antigo."""
+    dias = set()
+    for status, criado in zip(syncs_tenant["status"], syncs_tenant["created"]):
         if status != "error":
             break
-        contagem += 1
-    return contagem
+        dias.add(criado.tz_convert("UTC").date())
+    return len(dias)
 
 
 def ultimo_sucesso(syncs_tenant):
@@ -93,7 +98,7 @@ def status_atual(historico, coletas, agora):
             "horas_desde": (agora - ultimo["created"]) / pd.Timedelta(hours=1) if ultimo is not None else float("nan"),
             "itens": ultimo["number_of_affected_items"] if ultimo is not None else float("nan"),
             "taxa_erro_7d": taxa_erro(syncs, agora),
-            "erros_seguidos": erros_seguidos(syncs),
+            "dias_seguidos_erro": dias_seguidos_com_erro(syncs),
             "ultimo_sucesso": ultimo_sucesso(syncs),
             "ultimos_syncs": syncs["status"].head(QTD_ULTIMOS_SYNCS).tolist()[::-1],
             "falha_coleta": resultado in RESULTADOS_FALHA,

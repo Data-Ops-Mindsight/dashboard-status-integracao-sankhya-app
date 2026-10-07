@@ -59,9 +59,27 @@ def test_taxa_erro_sem_syncs_finalizados_e_nan():
     assert pd.isna(regras.taxa_erro(syncs((1, "pending")), AGORA))
 
 
-def test_erros_seguidos():
-    assert regras.erros_seguidos(syncs((1, "error"), (25, "error"), (49, "success"), (73, "error"))) == 2
-    assert regras.erros_seguidos(syncs((1, "success"), (25, "error"))) == 0
+def test_dias_seguidos_com_erro():
+    assert regras.dias_seguidos_com_erro(syncs((1, "error"), (25, "error"), (49, "success"), (73, "error"))) == 2
+    assert regras.dias_seguidos_com_erro(syncs((1, "success"), (25, "error"))) == 0
+    assert regras.dias_seguidos_com_erro(syncs()) == 0
+
+
+def test_dias_seguidos_conta_dias_distintos_e_nao_syncs():
+    # 3 syncs com erro em 2 dias (UTC) + um sucesso antes: reprocessamento no mesmo dia conta um dia só
+    mesmo_dia = syncs((1, "error"), (2, "error"), (25, "error"), (49, "success"))
+    assert regras.dias_seguidos_com_erro(mesmo_dia) == 2
+
+    # dia sem nenhum sync no meio (sem sync há 2 dias entre os erros) não conta como dia com erro
+    com_buraco = syncs((1, "error"), (73, "error"), (97, "success"))
+    assert regras.dias_seguidos_com_erro(com_buraco) == 2
+
+
+def test_dias_seguidos_usa_o_dia_utc_e_nao_o_de_brasilia():
+    # 22h30 e 23h30 de Brasília do dia 22 são 01h30 e 02h30 UTC do dia 23: o mesmo dia UTC
+    df = pd.DataFrame({"tenant": ["a", "a"], "id_sync": [2, 1], "status": ["error", "error"],
+                       "created": [pd.Timestamp("2026-09-22 23:30", tz=FUSO), pd.Timestamp("2026-09-22 22:30", tz=FUSO)]})
+    assert regras.dias_seguidos_com_erro(df) == 1
 
 
 def test_status_atual_so_tenants_da_ultima_coleta():
