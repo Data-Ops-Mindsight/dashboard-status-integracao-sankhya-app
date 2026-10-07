@@ -59,7 +59,7 @@ _CONTORNO_ICONE = (
 
 CSS = f"""
 <style>
-.block-container {{ padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1320px; }}
+.block-container {{ padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1500px; }}
 [data-testid="stHeader"] {{ background: transparent; }}
 
 /* Cabeçalho */
@@ -117,10 +117,10 @@ CSS = f"""
 .ms-tabela {{ width: 100%; border-collapse: collapse; font-size: .88rem; color: {GRAFITE}; }}
 .ms-tabela th {{
   text-align: left; font-weight: 500; font-size: .74rem; letter-spacing: .04em; text-transform: uppercase;
-  color: {TEXTO_SECUNDARIO}; padding: 12px 14px; border-bottom: 1px solid {BORDA}; background: #FDFAF7;
+  color: {TEXTO_SECUNDARIO}; padding: 12px; border-bottom: 1px solid {BORDA}; background: #FDFAF7;
   white-space: nowrap;
 }}
-.ms-tabela td {{ padding: 10px 14px; border-bottom: 1px solid #F4EEE8; vertical-align: middle; white-space: nowrap; }}
+.ms-tabela td {{ padding: 10px 12px; border-bottom: 1px solid #F4EEE8; vertical-align: middle; white-space: nowrap; }}
 .ms-tabela tr:last-child td {{ border-bottom: none; }}
 .ms-tabela tbody tr:hover td {{ background: #FCF8F4; }}
 .ms-tabela .ms-num {{ text-align: right; font-variant-numeric: tabular-nums; }}

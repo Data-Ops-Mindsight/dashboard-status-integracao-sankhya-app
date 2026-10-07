@@ -126,17 +126,38 @@ def _titulo_erro_predominante(data_coleta):
                   + ". Só aparece quando o último sync deu erro.", quote=True)
 
 
+COLUNA_QTD_ERROS = "Qtd. de erros"
+DICAS_COLUNAS = {
+    COLUNA_QTD_ERROS: "Registros com erro no ÚLTIMO sync do cliente (sync_history_items + sync_datas). "
+                      "Só aparece quando o último sync deu erro.",
+}
+
+
+def _th(titulo, numerica, dica=None):
+    classe = " class=ms-num" if numerica else ""
+    atributo_dica = f" title='{escape(dica, quote=True)}'" if dica else ""
+    return f"<th{classe}{atributo_dica}>{titulo}</th>"
+
+
+def _formatar_qtd(valor):
+    return "—" if pd.isna(valor) else f"{int(valor):,}".replace(",", ".")
+
+
 def tabela_status(df):
     if df.empty:
         _render("<div class='ms-tabela-wrap'><p class='ms-nota' style='padding:18px'>Nenhum cliente com esses filtros.</p></div>")
         return
 
     tem_classificacao = "tipo_erro_predominante" in df.columns
+    tem_qtd_erros = "qtd_erros_ultimo_sync" in df.columns
     linhas = []
     for linha in df.itertuples(index=False):
         aviso = ("<span class='ms-aviso' title='A última coleta deste cliente falhou na API — o status pode estar desatualizado'>⚠️</span>"
                  if linha.falha_coleta else "")
         itens = "—" if pd.isna(linha.itens) else f"{int(linha.itens):,}".replace(",", ".")
+        coluna_qtd_erros = (
+            f"<td class='ms-num'>{_formatar_qtd(linha.qtd_erros_ultimo_sync)}</td>" if tem_qtd_erros else ""
+        )
         coluna_classificacao = (
             f"<td title='{_titulo_erro_predominante(getattr(linha, 'data_tipo_erro', None))}'>"
             f"{_tag_erro_predominante(linha.tipo_erro_predominante, linha.qtd_tipo_predominante)}</td>"
@@ -148,16 +169,21 @@ def tabela_status(df):
             f"<td>{selo(linha.estado)}</td>"
             f"<td>{formatar_data_hora(linha.ultimo_sync)} <span class='ms-quando'>{formatar_ha_quanto(linha.horas_desde)}</span></td>"
             f"<td class='ms-num'>{itens}</td>"
+            f"{coluna_qtd_erros}"
             f"<td class='ms-num'>{linha.erros_seguidos or '—'}</td>"
             f"<td>{_trilha_syncs(linha.ultimos_syncs)}</td>"
             f"{coluna_classificacao}"
             "</tr>"
         )
 
-    cabecalhos = ["Cliente", "Status", "Último sync", "Itens afetados", "Erros seguidos", "Últimos 7 syncs"]
+    cabecalhos = ["Cliente", "Status", "Último sync", "Itens afetados"]
+    if tem_qtd_erros:
+        cabecalhos.append(COLUNA_QTD_ERROS)
+    cabecalhos += ["Erros seguidos", "Últimos 7 syncs"]
     if tem_classificacao:
         cabecalhos.append("Erro predominante")
-    ths = "".join(f"<th{' class=ms-num' if c in ('Itens afetados', 'Erros seguidos') else ''}>{c}</th>" for c in cabecalhos)
+    numericas = ("Itens afetados", COLUNA_QTD_ERROS, "Erros seguidos")
+    ths = "".join(_th(c, c in numericas, DICAS_COLUNAS.get(c)) for c in cabecalhos)
     _render(f"<div class='ms-tabela-wrap'><table class='ms-tabela'><thead><tr>{ths}</tr></thead>"
             f"<tbody>{''.join(linhas)}</tbody></table></div>")
 

@@ -37,6 +37,7 @@ ORDENACOES = {
     "Cliente": (["tenant"], [True]),
     "Taxa de erro (7 dias)": (["taxa_erro_7d", "tenant"], [False, True]),
     "Último sync": (["ultimo_sync", "tenant"], [True, True]),
+    "Quantidade de erros": (["qtd_erros_ultimo_sync", "tenant"], [False, True]),
 }
 
 ESCALA_STATUS = alt.Scale(
@@ -160,10 +161,12 @@ df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
     lambda t: predominantes.get(t, {}).get("quantidade_predominante")
 )
 df_atual["data_tipo_erro"] = df_atual["tenant"].map(lambda t: predominantes.get(t, {}).get("coletado_em"))
+# Quantidade de erros do último sync: soma de todos os tipos desse sync
+df_atual["qtd_erros_ultimo_sync"] = df_atual["tenant"].map(lambda t: predominantes.get(t, {}).get("quantidade_total"))
 # Só para quem está com erro agora: se o último sync deu certo (ou está pendente),
 # a coluna fica vazia.
 df_atual = regras.so_quando_ultimo_sync_com_erro(
-    df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_tipo_erro"]
+    df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_tipo_erro", "qtd_erros_ultimo_sync"]
 )
 
 ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),
