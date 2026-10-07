@@ -66,8 +66,10 @@ def test_erro_predominante_por_tenant_escolhe_o_tipo_com_mais_ocorrencias():
     predominantes = dados_correcoes.erro_predominante_por_tenant(classificacao)
 
     assert predominantes == {
-        "acme": {"tipo_erro_predominante": "multiplos_registros_ativos", "quantidade_predominante": 9, "quantidade_total": 12},
-        "outra": {"tipo_erro_predominante": "cpf_invalido", "quantidade_predominante": 1, "quantidade_total": 1},
+        "acme": {"tipo_erro_predominante": "multiplos_registros_ativos", "quantidade_predominante": 9,
+                 "quantidade_total": 12, "data_execucao": ""},
+        "outra": {"tipo_erro_predominante": "cpf_invalido", "quantidade_predominante": 1,
+                  "quantidade_total": 1, "data_execucao": ""},
     }
 
 
@@ -204,3 +206,46 @@ def test_carregar_cobertura_credenciais_aba_inexistente_devolve_none(monkeypatch
     monkeypatch.setattr(dados_correcoes, "_cliente_sheets", lambda credenciais_json: _ClienteFake())
 
     assert dados_correcoes.carregar_cobertura_credenciais("fake-credencial") is None
+
+
+CLASSIFICACAO_DUAS_EXECUCOES = [
+    # execução antiga: predominava cpf_invalido
+    {"data_hora_utc": "2026-09-28T10:00:00+00:00", "tenant": "acme", "tipo_erro": "cpf_invalido", "quantidade": 50},
+    {"data_hora_utc": "2026-09-28T10:00:00+00:00", "tenant": "acme", "tipo_erro": "email_invalido", "quantidade": 2},
+    # execução mais recente: só transferência incompleta e email
+    {"data_hora_utc": "2026-10-05T09:30:00+00:00", "tenant": "acme", "tipo_erro": "transferencia_incompleta", "quantidade": 4},
+    {"data_hora_utc": "2026-10-05T09:30:00+00:00", "tenant": "acme", "tipo_erro": "email_invalido", "quantidade": 1},
+    {"data_hora_utc": "2026-10-01T08:00:00Z", "tenant": "outra", "tipo_erro": "cpf_invalido", "quantidade": 3},
+]
+
+
+def test_ultima_execucao_por_tenant_mantem_so_a_mais_recente():
+    linhas = dados_correcoes.ultima_execucao_por_tenant(CLASSIFICACAO_DUAS_EXECUCOES)
+    assert {(l["tenant"], l["tipo_erro"]) for l in linhas} == {
+        ("acme", "transferencia_incompleta"), ("acme", "email_invalido"), ("outra", "cpf_invalido"),
+    }
+
+
+def test_erro_predominante_da_ultima_execucao_ignora_o_historico():
+    predominantes = dados_correcoes.erro_predominante_por_tenant(
+        dados_correcoes.ultima_execucao_por_tenant(CLASSIFICACAO_DUAS_EXECUCOES)
+    )
+    # no acumulado seria cpf_invalido (50); na última execução é transferencia_incompleta (4)
+    assert predominantes["acme"] == {"tipo_erro_predominante": "transferencia_incompleta", "quantidade_predominante": 4,
+                                     "quantidade_total": 5, "data_execucao": "2026-10-05T09:30:00+00:00"}
+    assert predominantes["outra"]["data_execucao"] == "2026-10-01T08:00:00Z"
+
+
+def test_ultima_execucao_compara_datas_e_nao_texto():
+    linhas = [
+        {"data_hora_utc": "2026-10-05T12:00:00+00:00", "tenant": "t", "tipo_erro": "a", "quantidade": 1},
+        {"data_hora_utc": "2026-10-05T10:00:00-03:00", "tenant": "t", "tipo_erro": "b", "quantidade": 1},  # 13h UTC
+    ]
+    assert [l["tipo_erro"] for l in dados_correcoes.ultima_execucao_por_tenant(linhas)] == ["b"]
+
+
+def test_ultima_execucao_com_data_invalida_nao_quebra():
+    linhas = [{"data_hora_utc": "", "tenant": "t", "tipo_erro": "a", "quantidade": 1},
+              {"data_hora_utc": "2026-10-05T12:00:00Z", "tenant": "t", "tipo_erro": "b", "quantidade": 1}]
+    assert [l["tipo_erro"] for l in dados_correcoes.ultima_execucao_por_tenant(linhas)] == ["b"]
+    assert dados_correcoes.ultima_execucao_por_tenant([]) == []

@@ -145,7 +145,10 @@ try:
     classificacao = carregar_classificacao_cacheada(credenciais_sheets())
 except Exception:
     classificacao = []
-predominantes = dados_correcoes.erro_predominante_por_tenant(classificacao)
+# Só a execução mais recente da triagem de cada cliente (não o acumulado do histórico)
+predominantes = dados_correcoes.erro_predominante_por_tenant(
+    dados_correcoes.ultima_execucao_por_tenant(classificacao)
+)
 df_atual["tipo_erro_predominante"] = df_atual["tenant"].map(
     lambda t: predominantes.get(t, {}).get("tipo_erro_predominante")
 )
@@ -155,9 +158,12 @@ df_atual["tipo_erro_predominante"] = df_atual["tenant"].map(
 df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
     lambda t: predominantes.get(t, {}).get("quantidade_predominante")
 )
+df_atual["data_execucao_triagem"] = df_atual["tenant"].map(
+    lambda t: predominantes.get(t, {}).get("data_execucao")
+)
 # Só para quem está com erro agora: se o último sync deu certo (ou está pendente),
 # a coluna fica vazia.
-df_atual = regras.so_quando_ultimo_sync_com_erro(df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante"])
+df_atual = regras.so_quando_ultimo_sync_com_erro(df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_execucao_triagem"])
 
 ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)

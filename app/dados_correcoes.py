@@ -13,6 +13,7 @@ este módulo precisar saber a diferença.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 ESCOPOS_LEITURA = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -139,6 +140,30 @@ def matriz_tenant_por_tipo_erro(correcoes: Iterable[dict]) -> dict[str, dict[str
     return matriz
 
 
+def _instante_execucao(valor) -> tuple:
+    """Chave de ordenação de `data_hora_utc` (ISO 8601). Valores que não forem
+    ISO válidos ficam por último na comparação, mas sem derrubar o cálculo."""
+    texto = str(valor or "").strip()
+    try:
+        return (1, datetime.fromisoformat(texto.replace("Z", "+00:00")).astimezone(timezone.utc), texto)
+    except ValueError:
+        return (0, datetime.min.replace(tzinfo=timezone.utc), texto)
+
+
+def ultima_execucao_por_tenant(classificacao: Iterable[dict]) -> list[dict]:
+    """Só as linhas da execução MAIS RECENTE de cada tenant (maior
+    `data_hora_utc` daquele tenant). Cada execução do pipeline publica todas as
+    linhas de um tenant com o mesmo `data_hora_utc`."""
+    linhas = list(classificacao)
+    mais_recente: dict = {}
+    for linha in linhas:
+        tenant = linha.get("tenant")
+        instante = _instante_execucao(linha.get("data_hora_utc"))
+        if tenant not in mais_recente or instante > mais_recente[tenant]:
+            mais_recente[tenant] = instante
+    return [l for l in linhas if _instante_execucao(l.get("data_hora_utc")) == mais_recente[l.get("tenant")]]
+
+
 def erro_predominante_por_tenant(classificacao: Iterable[dict]) -> dict[str, dict]:
     """Pra cada tenant, soma `quantidade` por `tipo_erro` (todas as
     execuções publicadas na aba "Classificacao") e devolve o `tipo_erro`
@@ -149,7 +174,9 @@ def erro_predominante_por_tenant(classificacao: Iterable[dict]) -> dict[str, dic
     que ainda caem em revisao_manual.
 
     `{tenant: {"tipo_erro_predominante": str, "quantidade_predominante": int,
-    "quantidade_total": int}}` -- tenant sem nenhuma linha não aparece."""
+    "quantidade_total": int, "data_execucao": str}}` -- tenant sem nenhuma linha não aparece.
+    Para olhar só a execução mais recente, filtre antes com `ultima_execucao_por_tenant`."""
+    classificacao = list(classificacao)
     matriz = matriz_tenant_por_tipo_erro(classificacao)
     resultado: dict[str, dict] = {}
     for tenant, contagem in matriz.items():
@@ -160,6 +187,8 @@ def erro_predominante_por_tenant(classificacao: Iterable[dict]) -> dict[str, dic
             "tipo_erro_predominante": tipo_predominante,
             "quantidade_predominante": contagem[tipo_predominante],
             "quantidade_total": sum(contagem.values()),
+            "data_execucao": max((str(l.get("data_hora_utc") or "") for l in classificacao
+                                  if l.get("tenant") == tenant), key=_instante_execucao, default=""),
         }
     return resultado
 
