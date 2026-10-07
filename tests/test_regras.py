@@ -166,3 +166,49 @@ def test_agregar_por_dia_media_mantem_dia_sem_execucao_sem_valor():
 def test_agregar_por_dia_vazio():
     r = regras.agregar_por_dia(pd.DataFrame({"d": [], "v": []}), "d", "v")
     assert r.empty and list(r.columns) == ["dia", "valor", "registros"]
+
+
+def _erros(*linhas):
+    df = pd.DataFrame(linhas, columns=["tenant", "id_sync", "tipo_erro", "quantidade", "coletado_em"])
+    df["coletado_em"] = pd.to_datetime(df["coletado_em"], utc=True)
+    return df
+
+
+def test_erro_predominante_do_ultimo_sync_escolhe_o_tipo_com_mais_ocorrencias():
+    erros = _erros(
+        ("alfa", 10, "email_duplicado", 3, "2026-10-06T10:00:00Z"),
+        ("alfa", 10, "conflito_timespan", 8, "2026-10-06T10:00:00Z"),
+        ("alfa", 10, "cpf_invalido", 1, "2026-10-06T10:00:00Z"),
+    )
+    r = regras.erro_predominante_do_ultimo_sync(erros, {"alfa": 10})
+    assert r["alfa"]["tipo_erro_predominante"] == "conflito_timespan"
+    assert r["alfa"]["quantidade_predominante"] == 8          # só desse tipo, não o total
+    assert r["alfa"]["quantidade_total"] == 12
+    assert r["alfa"]["coletado_em"] == pd.Timestamp("2026-10-06T10:00:00Z")
+
+
+def test_erro_predominante_ignora_dados_de_sync_antigo():
+    erros = _erros(
+        ("alfa", 9, "cpf_invalido", 50, "2026-10-05T10:00:00Z"),            # sync anterior: não conta
+        ("alfa", 10, "email_invalido", 2, "2026-10-06T10:00:00Z"),
+        ("beta", 7, "cpf_invalido", 4, "2026-10-05T10:00:00Z"),            # último sync de beta é 8 (sem linhas)
+    )
+    r = regras.erro_predominante_do_ultimo_sync(erros, {"alfa": 10, "beta": 8, "gama": 1, "sem_sync": None})
+    assert r["alfa"]["tipo_erro_predominante"] == "email_invalido"
+    assert set(r) == {"alfa"}                                              # beta/gama/sem_sync: sem dado
+
+
+def test_erro_predominante_empate_e_estavel():
+    erros = _erros(
+        ("alfa", 10, "pendente:change_salaries", 5, "2026-10-06T10:00:00Z"),
+        ("alfa", 10, "conflito_timespan", 5, "2026-10-06T10:00:00Z"),
+    )
+    assert regras.erro_predominante_do_ultimo_sync(erros, {"alfa": 10})["alfa"]["tipo_erro_predominante"] == "conflito_timespan"
+    assert regras.erro_predominante_do_ultimo_sync(_erros(), {"alfa": 10}) == {}
+
+
+def test_status_atual_traz_o_id_do_ultimo_sync():
+    historico = syncs((30, "error"), (2, "success"), tenant="alfa")       # o último sync (mais recente) é o de 2h
+    df = regras.status_atual(historico, coletas("alfa", "novo"), AGORA).set_index("tenant")
+    assert df.loc["alfa", "id_ultimo_sync"] == historico.sort_values("created").iloc[-1]["id_sync"]
+    assert pd.isna(df.loc["novo", "id_ultimo_sync"])

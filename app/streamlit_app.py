@@ -84,16 +84,15 @@ def carregar_cobertura_credenciais_cacheada(credenciais_json):
     return dados_correcoes.carregar_cobertura_credenciais(credenciais_json)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def carregar_classificacao_cacheada(credenciais_json):
-    """Silencioso (`show_spinner=False`) e nunca propaga erro -- essa
-    classificação só ENRIQUECE a aba "Status atual" com uma tag de tipo de
-    erro predominante; se falhar, a tabela de status continua funcionando
-    normalmente, só sem essa coluna."""
+@st.cache_data(ttl=600, show_spinner=False)
+def carregar_erros_sync_cacheado(fonte):
+    """Tipos de erro do último sync de cada cliente (gerados pela coleta). Silencioso e nunca
+    propaga erro: só ENRIQUECE a aba "Status atual"; se falhar, a tabela continua funcionando,
+    só sem a coluna "Erro predominante"."""
     try:
-        return dados_correcoes.carregar_classificacao_erros(credenciais_json)
-    except dados_correcoes.ErroFonteDados:
-        return []
+        return dados.carregar_erros_sync(fonte)
+    except dados.ErroFonteDados:
+        return pd.DataFrame(columns=["tenant", "id_sync", "tipo_erro", "quantidade", "coletado_em"])
 
 
 def recarregar():
@@ -102,7 +101,7 @@ def recarregar():
     carregar.clear()
     carregar_correcoes.clear()
     carregar_cobertura_credenciais_cacheada.clear()
-    carregar_classificacao_cacheada.clear()
+    carregar_erros_sync_cacheado.clear()
 
 
 def grafico_barras_por_dia(df_dia, titulo_valor, formato=",.0f", detalhe_registros=None):
@@ -146,33 +145,26 @@ agora = pd.Timestamp.now(tz=dados.FUSO)
 df_atual = regras.status_atual(historico, coletas, agora)
 ultima_execucao = coletas["executado_em"].max()
 
-# Tag de classificação por cliente (tipo_erro predominante, TODO tipo
-# detectado -- não só o automatizado) pra priorização -- enriquece
-# "Status atual" sem depender dele: falha em carregar não impede a tabela
-# de status de funcionar (só fica sem essa coluna).
-try:
-    classificacao = carregar_classificacao_cacheada(credenciais_sheets())
-except Exception:
-    classificacao = []
-# Só a execução mais recente da triagem de cada cliente (não o acumulado do histórico)
-predominantes = dados_correcoes.erro_predominante_por_tenant(
-    dados_correcoes.ultima_execucao_por_tenant(classificacao)
+# Tipo de erro predominante por cliente, no ÚLTIMO sync (gerado pela coleta a cada 4h,
+# casado com o id do último sync de cada cliente). Enriquece "Status atual" sem depender
+# dele: sem o arquivo ou com falha, a tabela funciona normalmente, só sem essa coluna.
+erros_sync = carregar_erros_sync_cacheado(fonte)
+predominantes = regras.erro_predominante_do_ultimo_sync(
+    erros_sync, dict(zip(df_atual["tenant"], df_atual["id_ultimo_sync"]))
 )
 df_atual["tipo_erro_predominante"] = df_atual["tenant"].map(
     lambda t: predominantes.get(t, {}).get("tipo_erro_predominante")
 )
-# Quantidade DESSE tipo específico (não o total de todos os tipos do
-# tenant) -- "multiplos_registros_ativos (12)" tem que significar 12
-# ocorrências de multiplos_registros_ativos, não o total geral do tenant.
+# Quantidade DESSE tipo (não o total de erros do último sync do cliente)
 df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
     lambda t: predominantes.get(t, {}).get("quantidade_predominante")
 )
-df_atual["data_execucao_triagem"] = df_atual["tenant"].map(
-    lambda t: predominantes.get(t, {}).get("data_execucao")
-)
+df_atual["data_tipo_erro"] = df_atual["tenant"].map(lambda t: predominantes.get(t, {}).get("coletado_em"))
 # Só para quem está com erro agora: se o último sync deu certo (ou está pendente),
 # a coluna fica vazia.
-df_atual = regras.so_quando_ultimo_sync_com_erro(df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_execucao_triagem"])
+df_atual = regras.so_quando_ultimo_sync_com_erro(
+    df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_tipo_erro"]
+)
 
 ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)

@@ -117,13 +117,13 @@ def _tag_erro_predominante(tipo_erro, quantidade_total):
     return f"<span class='ms-selo' style='--cor:{tema.GRAFITE};--texto:{tema.GRAFITE}'>{escape(tipo_erro)}{qtd}</span>"
 
 
-def _titulo_erro_predominante(data_execucao):
+def _titulo_erro_predominante(data_coleta):
     quando = ""
-    instante = pd.to_datetime(data_execucao, utc=True, errors="coerce") if data_execucao else pd.NaT
+    instante = pd.to_datetime(data_coleta, utc=True, errors="coerce") if pd.notna(data_coleta) else pd.NaT
     if pd.notna(instante):
-        quando = f" (triagem de {formatar_data_hora(instante)} UTC)"
-    return escape("Tipo de erro com mais ocorrências na ÚLTIMA execução da triagem deste cliente" + quando
-                  + ", inclusive os que caem em revisão manual. Só aparece quando o último sync deu erro.", quote=True)
+        quando = f" (coleta de {formatar_data_hora(instante)} UTC)"
+    return escape("Tipo de erro com mais ocorrências no ÚLTIMO sync deste cliente" + quando
+                  + ". Só aparece quando o último sync deu erro.", quote=True)
 
 
 def tabela_status(df):
@@ -138,7 +138,7 @@ def tabela_status(df):
                  if linha.falha_coleta else "")
         itens = "—" if pd.isna(linha.itens) else f"{int(linha.itens):,}".replace(",", ".")
         coluna_classificacao = (
-            f"<td title='{_titulo_erro_predominante(getattr(linha, 'data_execucao_triagem', None))}'>"
+            f"<td title='{_titulo_erro_predominante(getattr(linha, 'data_tipo_erro', None))}'>"
             f"{_tag_erro_predominante(linha.tipo_erro_predominante, linha.qtd_tipo_predominante)}</td>"
             if tem_classificacao else ""
         )

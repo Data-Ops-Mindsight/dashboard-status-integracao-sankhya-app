@@ -86,3 +86,29 @@ def test_horarios_ficam_em_utc_como_no_sistema(tmp_path, monkeypatch):
     h = dados.carregar_historico()
     assert h.loc[0, "created"].strftime("%d/%m %H:%M") == "25/09 23:30"
     assert h.loc[0, "data_sync"] == "2026-09-25"
+
+
+CSV_ERROS = ("tenant,id_sync,tipo_erro,quantidade,coletado_em\n"
+             "alfa,10,conflito_timespan,8,2026-10-06T10:00:00+00:00\n"
+             "alfa,10,pendente:change_salaries,3,2026-10-06T10:00:00+00:00\n")
+
+
+def test_erros_sync_le_do_github(monkeypatch):
+    monkeypatch.setattr(dados.requests, "get", lambda url, **k: RespostaFalsa(200, CSV_ERROS))
+    df = dados.carregar_erros_sync(FONTE)
+    assert df["id_sync"].tolist() == [10, 10] and df["quantidade"].tolist() == [8, 3]
+    assert str(df.loc[0, "coletado_em"].tz) == "UTC"
+
+
+def test_erros_sync_arquivo_inexistente_vira_vazio(tmp_path, monkeypatch):
+    monkeypatch.setattr(dados.requests, "get", lambda url, **k: RespostaFalsa(404))
+    assert dados.carregar_erros_sync(FONTE).empty                       # GitHub: 404
+    monkeypatch.setattr(dados, "PASTA_DADOS", tmp_path)
+    vazio = dados.carregar_erros_sync()                                  # pasta local sem o arquivo
+    assert vazio.empty and list(vazio.columns) == ["tenant", "id_sync", "tipo_erro", "quantidade", "coletado_em"]
+
+
+def test_erros_sync_outros_erros_continuam_sendo_erro(monkeypatch):
+    monkeypatch.setattr(dados.requests, "get", lambda url, **k: RespostaFalsa(401))
+    with pytest.raises(dados.ErroFonteDados, match="token"):
+        dados.carregar_erros_sync(FONTE)

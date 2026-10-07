@@ -22,6 +22,7 @@ PASTA_DADOS = Path(os.environ.get("DADOS_PASTA", Path(__file__).resolve().parent
 
 ARQUIVO_HISTORICO = "historico_sync.csv"
 ARQUIVO_COLETAS = "coletas.csv"
+ARQUIVO_ERROS_SYNC = "erros_sync.csv"
 URL_CONTEUDO = "https://api.github.com/repos/{repo}/contents/{caminho}"
 TIMEOUT = 30
 
@@ -30,6 +31,10 @@ COLUNAS_NUMERICAS = ["number_of_affected_items", "request_time", "total_time"]
 
 class ErroFonteDados(Exception):
     """Falha ao obter os CSVs (mensagem pronta para mostrar na tela)."""
+
+
+class ArquivoNaoEncontrado(ErroFonteDados):
+    """O arquivo não existe na fonte (ex.: ainda não gerado pela coleta)."""
 
 
 def descrever_fonte(fonte):
@@ -62,7 +67,7 @@ def _baixar_do_github(fonte, nome_arquivo):
         raise ErroFonteDados(f"O GitHub recusou o token (HTTP {resposta.status_code}): ele pode ter expirado "
                              "ou não ter permissão Contents: Read-only no repositório de dados.")
     if resposta.status_code == 404:
-        raise ErroFonteDados(f"`{caminho}` não encontrado em `{fonte['repo']}` (branch `{branch}`). "
+        raise ArquivoNaoEncontrado(f"`{caminho}` não encontrado em `{fonte['repo']}` (branch `{branch}`). "
                              "Confira o nome do repositório e se o token tem acesso a ele.")
     if resposta.status_code != 200:
         raise ErroFonteDados(f"Erro inesperado do GitHub ao baixar `{caminho}` (HTTP {resposta.status_code}).")
@@ -74,7 +79,7 @@ def _abrir(nome_arquivo, fonte):
         return _baixar_do_github(fonte, nome_arquivo)
     caminho = PASTA_DADOS / nome_arquivo
     if not caminho.exists():
-        raise ErroFonteDados(f"Arquivo `{caminho}` não encontrado. Configure a seção [dados] dos secrets "
+        raise ArquivoNaoEncontrado(f"Arquivo `{caminho}` não encontrado. Configure a seção [dados] dos secrets "
                              "ou aponte DADOS_PASTA para a pasta dados/ do repositório da coleta.")
     return caminho
 
@@ -104,3 +109,16 @@ def carregar_coletas(fonte=None):
     df["executado_em"] = _para_data_hora(df["executado_em"])
     df["qtd_registros"] = pd.to_numeric(df["qtd_registros"], errors="coerce")
     return df
+
+
+def carregar_erros_sync(fonte=None):
+    """Tipos de erro do último sync de cada cliente (gerado pela coleta). Vazio se o arquivo ainda não existe."""
+    try:
+        df = _ler_csv(ARQUIVO_ERROS_SYNC, fonte)
+    except ArquivoNaoEncontrado:
+        df = pd.DataFrame(columns=["tenant", "id_sync", "tipo_erro", "quantidade", "coletado_em"])
+    df["id_sync"] = pd.to_numeric(df["id_sync"], errors="coerce").astype("Int64")
+    df["quantidade"] = pd.to_numeric(df["quantidade"], errors="coerce").fillna(0).astype("int64")
+    df["coletado_em"] = _para_data_hora(df["coletado_em"]) if len(df) else pd.to_datetime(df["coletado_em"], utc=True)
+    return df
+

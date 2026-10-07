@@ -86,6 +86,7 @@ def status_atual(historico, coletas, agora):
         ultimo = syncs.iloc[0] if not syncs.empty else None
         linhas.append({
             "tenant": tenant,
+            "id_ultimo_sync": int(ultimo["id_sync"]) if ultimo is not None else None,
             "estado": classificar(syncs, agora),
             "status_ultimo": ultimo["status"] if ultimo is not None else None,
             "ultimo_sync": ultimo["created"] if ultimo is not None else pd.NaT,
@@ -162,4 +163,33 @@ def agregar_por_dia(df, coluna_data, coluna_valor, agregacao="sum", preencher_di
         if agregacao == "sum":
             por_dia["valor"] = por_dia["valor"].fillna(0)
     return por_dia.reset_index()
+
+
+def erro_predominante_do_ultimo_sync(erros_sync, ids_ultimo_sync):
+    """Por cliente, o tipo de erro com mais ocorrências no ÚLTIMO sync.
+
+    `erros_sync`: DataFrame (tenant, id_sync, tipo_erro, quantidade, coletado_em) gerado pela coleta.
+    `ids_ultimo_sync`: {tenant: id do último sync}. Só entram linhas desse sync — dado de um sync
+    antigo nunca aparece. Empate: o tipo de nome menor (resultado estável).
+
+    Retorna {tenant: {"tipo_erro_predominante", "quantidade_predominante", "quantidade_total",
+    "coletado_em"}}; cliente sem registros no último sync não aparece.
+    """
+    resultado = {}
+    if erros_sync.empty:
+        return resultado
+    for tenant, id_sync in ids_ultimo_sync.items():
+        if id_sync is None or pd.isna(id_sync):
+            continue
+        linhas = erros_sync[(erros_sync["tenant"] == tenant) & (erros_sync["id_sync"] == id_sync)]
+        if linhas.empty:
+            continue
+        melhor = linhas.sort_values(["quantidade", "tipo_erro"], ascending=[False, True]).iloc[0]
+        resultado[tenant] = {
+            "tipo_erro_predominante": melhor["tipo_erro"],
+            "quantidade_predominante": int(melhor["quantidade"]),
+            "quantidade_total": int(linhas["quantidade"].sum()),
+            "coletado_em": linhas["coletado_em"].max(),
+        }
+    return resultado
 
