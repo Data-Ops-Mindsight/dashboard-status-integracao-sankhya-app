@@ -8,12 +8,21 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-import autenticacao
-import componentes as ui
-import dados
-import dados_correcoes
-import regras
-import tema
+import recarga
+
+# Módulos locais em ordem de dependência (quem é importado por outro vem antes).
+# Se um deploy atualizou algum arquivo com o app aberto, recarrega todos antes de usar.
+MODULOS_LOCAIS = ["senha", "regras", "tema", "dados", "dados_correcoes", "componentes", "autenticacao"]
+recarga.recarregar_modulos_alterados(MODULOS_LOCAIS)
+
+import autenticacao  # noqa: E402
+import componentes as ui  # noqa: E402
+import dados  # noqa: E402
+import dados_correcoes  # noqa: E402
+import regras  # noqa: E402
+import tema  # noqa: E402
+
+recarga.registrar_assinaturas(MODULOS_LOCAIS)
 
 st.set_page_config(page_title="Integrações Sankhya · Mindsight",
                    page_icon=str(Path(__file__).parent / "assets" / "icone_roxo.png"), layout="wide")
