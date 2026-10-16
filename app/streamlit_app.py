@@ -139,6 +139,26 @@ def grafico_barras_por_dia(df_dia, titulo_valor, formato=",.0f", detalhe_registr
     st.altair_chart(tema.configurar_grafico(grafico), width="stretch", theme=None)
 
 
+CORES_TIPOS = ["#3B6EA5", "#D18B2C", "#5E8C7B", "#A25B8B", "#7A7F87", "#B08968", "#8FA9C9", "#C9A96E"]
+
+
+def grafico_barras_por_dia_e_tipo(df_dia_tipo):
+    """Barras empilhadas por dia, uma cor por tipo de erro corrigido."""
+    df_dia_tipo = df_dia_tipo.assign(dia_rotulo=df_dia_tipo["dia"].dt.strftime("%d/%m"))
+    dias = df_dia_tipo.sort_values("dia")["dia_rotulo"].drop_duplicates().tolist()
+    tipos = sorted(df_dia_tipo["tipo"].unique())
+    grafico = alt.Chart(df_dia_tipo).mark_bar().encode(
+        x=alt.X("dia_rotulo:N", title=None, sort=dias, scale=alt.Scale(domain=dias),
+                axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
+        y=alt.Y("valor:Q", title="Correções", axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
+        color=alt.Color("tipo:N", title="Tipo de erro",
+                        scale=alt.Scale(domain=tipos, range=(CORES_TIPOS * 3)[:len(tipos)])),
+        tooltip=[alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"), alt.Tooltip("tipo:N", title="Tipo de erro"),
+                 alt.Tooltip("valor:Q", title="Correções", format=",.0f")],
+    ).properties(height=260)
+    st.altair_chart(tema.configurar_grafico(grafico), width="stretch", theme=None)
+
+
 def sem_fuso(serie):
     """Altair/Vega interpreta datas sem fuso como horário local do navegador."""
     return serie.dt.tz_localize(None)
@@ -455,6 +475,11 @@ with aba_correcoes:
                                              preencher_dias_vazios=True)
             grafico_barras_por_dia(por_dia, "Correções")
             ui.nota("Total de correções aplicadas em cada dia (UTC).")
+
+            ui.secao("Correções por dia, por tipo de erro")
+            grafico_barras_por_dia_e_tipo(
+                regras.agregar_por_dia_e_tipo(df_correcoes, "data_hora_utc", "tipo_erro", "quantidade"))
+            ui.nota("Mesmo total do gráfico acima, dividido pelo tipo de erro corrigido (UTC).")
 
         ui.secao("Taxa de sucesso × falha por tenant")
         taxas = dados_correcoes.taxa_sucesso_por_tenant(resumo)

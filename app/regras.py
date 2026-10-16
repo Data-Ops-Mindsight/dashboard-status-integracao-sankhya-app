@@ -170,6 +170,22 @@ def agregar_por_dia(df, coluna_data, coluna_valor, agregacao="sum", preencher_di
     return por_dia.reset_index()
 
 
+def agregar_por_dia_e_tipo(df, coluna_data, coluna_tipo, coluna_valor):
+    """Soma por dia (UTC) e por tipo: colunas `dia`, `tipo` e `valor`, com todos os dias do período
+    presentes (valor 0 onde não houve correção daquele tipo), para as barras empilhadas."""
+    datas = pd.to_datetime(df[coluna_data], errors="coerce", utc=True)
+    base = pd.DataFrame({
+        "dia": datas.dt.tz_localize(None).dt.normalize(),
+        "tipo": df[coluna_tipo].astype(str),
+        "valor": pd.to_numeric(df[coluna_valor], errors="coerce"),
+    }).dropna(subset=["dia", "valor"])
+    if base.empty:
+        return pd.DataFrame(columns=["dia", "tipo", "valor"])
+    soma = base.groupby(["dia", "tipo"])["valor"].sum().unstack("tipo", fill_value=0)
+    soma = soma.reindex(pd.date_range(soma.index.min(), soma.index.max(), freq="D", name="dia"), fill_value=0)
+    return soma.stack().rename("valor").reset_index()
+
+
 def erro_predominante_do_ultimo_sync(erros_sync, ids_ultimo_sync):
     """Por cliente, o tipo de erro com mais ocorrências no ÚLTIMO sync.
 

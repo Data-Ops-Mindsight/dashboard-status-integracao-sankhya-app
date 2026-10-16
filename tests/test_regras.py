@@ -230,3 +230,18 @@ def test_status_atual_traz_o_id_do_ultimo_sync():
     df = regras.status_atual(historico, coletas("alfa", "novo"), AGORA).set_index("tenant")
     assert df.loc["alfa", "id_ultimo_sync"] == historico.sort_values("created").iloc[-1]["id_sync"]
     assert pd.isna(df.loc["novo", "id_ultimo_sync"])
+
+
+def test_agregar_por_dia_e_tipo_preenche_dias_e_tipos_ausentes_com_zero():
+    df = pd.DataFrame({
+        "data_hora_utc": ["2026-10-16T10:00:00+00:00", "2026-10-16T18:00:00+00:00", "2026-10-18T09:00:00+00:00"],
+        "tipo_erro": ["email_duplicado", "email_duplicado", "cpf_invalido"],
+        "quantidade": [3, 2, 4],
+    })
+    r = regras.agregar_por_dia_e_tipo(df, "data_hora_utc", "tipo_erro", "quantidade")
+    valores = {(d.strftime("%d/%m"), t): v for d, t, v in zip(r["dia"], r["tipo"], r["valor"])}
+    assert valores[("16/10", "email_duplicado")] == 5 and valores[("16/10", "cpf_invalido")] == 0
+    assert valores[("17/10", "email_duplicado")] == 0                       # dia sem correção continua no eixo
+    assert valores[("18/10", "cpf_invalido")] == 4
+    assert r["valor"].sum() == 9
+    assert regras.agregar_por_dia_e_tipo(df.iloc[0:0], "data_hora_utc", "tipo_erro", "quantidade").empty
