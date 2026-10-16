@@ -38,3 +38,15 @@ def test_coluna_qtd_de_erros_aparece_antes_de_dias_seguidos_com_milhar_e_traco(m
 def test_sem_a_coluna_de_dados_a_tabela_continua_igual(monkeypatch):
     html = _html(monkeypatch, [_linha("alfa", "Erro")])
     assert "Qtd. de erros" not in html and "Erro predominante" not in html
+
+
+def test_subtitulo_com_a_geometria_do_conflito_timespan(monkeypatch):
+    html = _html(monkeypatch, [
+        _linha("alfa", "Erro", qtd_erros_ultimo_sync=5.0, tipo_erro_predominante="conflito_timespan",
+               qtd_tipo_predominante=5.0,
+               geometria_conflito={"geometria": "sobreposicao", "quantidade": 3, "outras": 1}),
+        _linha("beta", "Erro", qtd_erros_ultimo_sync=2.0, tipo_erro_predominante="email_invalido",
+               qtd_tipo_predominante=2.0, geometria_conflito=None),
+    ])
+    assert html.count("sobreposicao (3) +1") == 1               # só no conflito_timespan
+    assert "email_invalido (2)</span></td>" in html             # sem subtítulo nos outros tipos

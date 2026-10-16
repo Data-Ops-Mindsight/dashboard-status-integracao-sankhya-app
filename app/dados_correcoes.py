@@ -193,6 +193,27 @@ def erro_predominante_por_tenant(classificacao: Iterable[dict]) -> dict[str, dic
     return resultado
 
 
+def geometria_do_conflito_por_tenant(classificacao: Iterable[dict]) -> dict[str, dict]:
+    """Geometria predominante do `conflito_timespan` de cada tenant, na execução MAIS RECENTE da
+    triagem (coluna `geometria` da aba "Classificacao", publicada pela triagem -- não vem da API
+    do controle). `{tenant: {"geometria", "quantidade", "outras"}}`; "outras" é quantas geometrias
+    diferentes existem além da predominante. Tenant sem conflito, ou cujas linhas ainda não têm
+    geometria (execuções anteriores à coluna), não aparece."""
+    contagem: dict[str, dict[str, int]] = {}
+    for linha in ultima_execucao_por_tenant(classificacao):
+        geometria = str(linha.get("geometria") or "").strip()
+        if linha.get("tipo_erro") != "conflito_timespan" or not geometria:
+            continue
+        por_geometria = contagem.setdefault(linha.get("tenant"), {})
+        por_geometria[geometria] = por_geometria.get(geometria, 0) + int(linha.get("quantidade") or 0)
+    resultado = {}
+    for tenant, por_geometria in contagem.items():
+        predominante = min(por_geometria, key=lambda g: (-por_geometria[g], g))
+        resultado[tenant] = {"geometria": predominante, "quantidade": por_geometria[predominante],
+                             "outras": len(por_geometria) - 1}
+    return resultado
+
+
 def taxa_sucesso_por_tenant(resumo: Iterable[dict]) -> dict[str, dict]:
     """`{tenant: {"sucesso": N, "falha": M, "taxa_sucesso_pct": ...}}` --
     qualquer status diferente de "sucesso" conta como falha (falhou_login,

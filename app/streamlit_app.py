@@ -96,6 +96,19 @@ def carregar_erros_sync_cacheado(fonte):
         return pd.DataFrame(columns=["tenant", "id_sync", "tipo_erro", "quantidade", "coletado_em"])
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def carregar_geometrias_cacheado(credenciais_json):
+    """Geometria do conflito_timespan por cliente (publicada pela triagem na planilha). Só ENRIQUECE
+    a tabela: sem credencial, sem a coluna ou com falha, a tabela funciona normalmente sem o subtítulo."""
+    if not credenciais_json:
+        return {}
+    try:
+        return dados_correcoes.geometria_do_conflito_por_tenant(
+            dados_correcoes.carregar_classificacao_erros(credenciais_json))
+    except dados_correcoes.ErroFonteDados:
+        return {}
+
+
 def recarregar():
     """Descarta o cache (para todos os usuários) e busca os CSVs/a planilha
     de novo no próximo carregamento."""
@@ -103,6 +116,7 @@ def recarregar():
     carregar_correcoes.clear()
     carregar_cobertura_credenciais_cacheada.clear()
     carregar_erros_sync_cacheado.clear()
+    carregar_geometrias_cacheado.clear()
 
 
 def grafico_barras_por_dia(df_dia, titulo_valor, formato=",.0f", detalhe_registros=None):
@@ -168,10 +182,17 @@ df_atual["qtd_tipo_predominante"] = df_atual["tenant"].map(
 df_atual["data_tipo_erro"] = df_atual["tenant"].map(lambda t: predominantes.get(t, {}).get("coletado_em"))
 # Quantidade de erros do último sync: soma de todos os tipos desse sync
 df_atual["qtd_erros_ultimo_sync"] = df_atual["tenant"].map(lambda t: predominantes.get(t, {}).get("quantidade_total"))
+# Geometria do conflito_timespan (subtítulo do "Erro predominante"), só quando é esse o tipo predominante
+geometrias = carregar_geometrias_cacheado(credenciais_sheets())
+df_atual["geometria_conflito"] = [
+    geometrias.get(t) if tipo == "conflito_timespan" else None
+    for t, tipo in zip(df_atual["tenant"], df_atual["tipo_erro_predominante"])
+]
 # Só para quem está com erro agora: se o último sync deu certo (ou está pendente),
 # a coluna fica vazia.
 df_atual = regras.so_quando_ultimo_sync_com_erro(
-    df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_tipo_erro", "qtd_erros_ultimo_sync"]
+    df_atual, ["tipo_erro_predominante", "qtd_tipo_predominante", "data_tipo_erro", "qtd_erros_ultimo_sync",
+                "geometria_conflito"]
 )
 
 ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),

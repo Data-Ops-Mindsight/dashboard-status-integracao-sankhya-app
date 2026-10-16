@@ -249,3 +249,26 @@ def test_ultima_execucao_com_data_invalida_nao_quebra():
               {"data_hora_utc": "2026-10-05T12:00:00Z", "tenant": "t", "tipo_erro": "b", "quantidade": 1}]
     assert [l["tipo_erro"] for l in dados_correcoes.ultima_execucao_por_tenant(linhas)] == ["b"]
     assert dados_correcoes.ultima_execucao_por_tenant([]) == []
+
+
+def test_geometria_do_conflito_usa_so_a_execucao_mais_recente_e_a_predominante():
+    classificacao = [
+        # execução antiga do alfa: ignorada
+        {"data_hora_utc": "2026-10-15T10:00:00+00:00", "tenant": "alfa", "tipo_erro": "conflito_timespan",
+         "quantidade": 50, "geometria": "periodo_identico"},
+        # execução recente do alfa
+        {"data_hora_utc": "2026-10-16T10:00:00+00:00", "tenant": "alfa", "tipo_erro": "conflito_timespan",
+         "quantidade": 3, "geometria": "sobreposicao"},
+        {"data_hora_utc": "2026-10-16T10:00:00+00:00", "tenant": "alfa", "tipo_erro": "conflito_timespan",
+         "quantidade": 7, "geometria": "excede_fim_do_employee_record"},
+        {"data_hora_utc": "2026-10-16T10:00:00+00:00", "tenant": "alfa", "tipo_erro": "conflito_timespan",
+         "quantidade": 2, "geometria": ""},                       # sobra sem geometria: não conta
+        {"data_hora_utc": "2026-10-16T10:00:00+00:00", "tenant": "alfa", "tipo_erro": "email_invalido",
+         "quantidade": 9, "geometria": ""},
+        # beta: linhas de antes da coluna existir
+        {"data_hora_utc": "2026-10-16T10:00:00+00:00", "tenant": "beta", "tipo_erro": "conflito_timespan",
+         "quantidade": 4},
+    ]
+    assert dados_correcoes.geometria_do_conflito_por_tenant(classificacao) == {
+        "alfa": {"geometria": "excede_fim_do_employee_record", "quantidade": 7, "outras": 1}}
+    assert dados_correcoes.geometria_do_conflito_por_tenant([]) == {}

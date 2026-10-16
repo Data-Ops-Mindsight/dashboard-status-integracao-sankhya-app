@@ -117,6 +117,16 @@ def _tag_erro_predominante(tipo_erro, quantidade_total):
     return f"<span class='ms-selo' style='--cor:{tema.GRAFITE};--texto:{tema.GRAFITE}'>{escape(tipo_erro)}{qtd}</span>"
 
 
+def _subtitulo_geometria(geometria):
+    """Linha menor sob o erro predominante: geometria do conflito_timespan (dict ou vazio/NaN)."""
+    if not isinstance(geometria, dict) or not geometria.get("geometria"):
+        return ""
+    outras = geometria.get("outras") or 0
+    mais = f" +{outras}" if outras else ""
+    return (f"<div class='ms-quando' title='Geometria do conflito (última triagem)'>"
+            f"{escape(geometria['geometria'])} ({int(geometria['quantidade'])}){mais}</div>")
+
+
 def _titulo_erro_predominante(data_coleta):
     quando = ""
     instante = pd.to_datetime(data_coleta, utc=True, errors="coerce") if pd.notna(data_coleta) else pd.NaT
@@ -167,7 +177,8 @@ def tabela_status(df):
         )
         coluna_classificacao = (
             f"<td title='{_titulo_erro_predominante(getattr(linha, 'data_tipo_erro', None))}'>"
-            f"{_tag_erro_predominante(linha.tipo_erro_predominante, linha.qtd_tipo_predominante)}</td>"
+            f"{_tag_erro_predominante(linha.tipo_erro_predominante, linha.qtd_tipo_predominante)}"
+            f"{_subtitulo_geometria(getattr(linha, 'geometria_conflito', None))}</td>"
             if tem_classificacao else ""
         )
         linhas.append(
