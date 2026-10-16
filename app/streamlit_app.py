@@ -142,6 +142,11 @@ except dados.ErroFonteDados as e:
     st.button("Tentar de novo", on_click=recarregar)
     st.stop()
 
+if historico.empty:
+    st.info("O histórico foi reiniciado e ainda não há nenhuma coleta. Os dados aparecem após a próxima coleta (a cada 4 horas).")
+    st.button("Atualizar", on_click=recarregar)
+    st.stop()
+
 agora = pd.Timestamp.now(tz=dados.FUSO)
 df_atual = regras.status_atual(historico, coletas, agora)
 ultima_execucao = coletas["executado_em"].max()
