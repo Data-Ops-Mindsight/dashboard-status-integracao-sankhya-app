@@ -51,6 +51,19 @@ def secao(titulo):
     _render(f"<div class='ms-secao'>{escape(titulo)}</div>")
 
 
+def intro(texto, cor=None):
+    """Caixa de introdução de uma aba/seção: o que ela responde e como usar (aceita <b> no texto)."""
+    _render(f"<div class='ms-intro' style='--cor:{cor or tema.ROXO}'>{texto}</div>")
+
+
+def descricao(responde, como_ler=None):
+    """Explicação curta de um gráfico/seção: a pergunta que ele responde e, opcionalmente, como lê-lo."""
+    partes = [f"<b>Responde:</b> {responde}"]
+    if como_ler:
+        partes.append(f"<b>Como ler:</b> {como_ler}")
+    _render(f"<p class='ms-descricao'>{'<br>'.join(partes)}</p>")
+
+
 def nota(texto):
     _render(f"<p class='ms-nota'>{texto}</p>")
 
@@ -74,29 +87,46 @@ def selo(estado):
             f"<span class='ms-ponto'></span>{escape(estado)}</span>")
 
 
+AJUDA_ESTADOS = {
+    regras.SUCESSO: "Clientes cujo ÚLTIMO sync terminou com sucesso.",
+    regras.ERRO: "Clientes cujo ÚLTIMO sync terminou em erro.",
+    regras.PENDENTE: "Clientes cujo último sync ainda está pendente (em andamento ou aguardando), sem sinal de problema.",
+    regras.PENDENTE_PROBLEMA: "Clientes com sync pendente há mais de 24 horas, ou com 2 syncs pendentes seguidos: "
+                              "provavelmente travado, não só em andamento.",
+    regras.SEM_SYNC: "Clientes sem nenhum sync há mais de 7 dias (ou nunca coletados).",
+}
+
+
 def cartoes_estado(contagem, total):
     itens = []
     for estado in regras.ESTADOS_EXIBICAO:
         qtd = int(contagem.get(estado, 0))
         pct = f"{qtd / total:.0%} dos clientes" if total else ""
         itens.append(
-            f"<div class='ms-cartao{' ms-zerado' if qtd == 0 else ''}' style='--cor:{tema.cor(estado)}'>"
-            f"<div class='ms-rotulo'><span class='ms-ponto' style='--cor:{tema.cor(estado)}'></span>{escape(estado)}</div>"
+            f"<div class='ms-cartao{' ms-zerado' if qtd == 0 else ''}' style='--cor:{tema.cor(estado)}' "
+            f"title='{escape(AJUDA_ESTADOS[estado], quote=True)}'>"
+            f"<div class='ms-rotulo'><span class='ms-ponto' style='--cor:{tema.cor(estado)}'></span>{escape(estado)}"
+            f" <span class='ms-info'>ⓘ</span></div>"
             f"<div class='ms-valor'>{qtd}</div><div class='ms-detalhe'>{pct}</div></div>"
         )
     _render(f"<div class='ms-cartoes'>{''.join(itens)}</div>")
 
 
 def cartoes_metricas(metricas):
-    """metricas: lista de (rótulo, valor, detalhe) ou (rótulo, valor, detalhe, cor).
+    """metricas: lista de (rótulo, valor, detalhe[, cor[, ajuda]]).
 
-    Sem cor explícita, cada cartão ganha uma cor da paleta (em ordem), para não ficarem todos iguais."""
+    Sem cor explícita, cada cartão ganha uma cor da paleta (em ordem), para não ficarem todos iguais.
+    `ajuda` (texto) vira o balão ao passar o mouse sobre o cartão: o que ele responde e como é calculado."""
     itens = []
     for i, metrica in enumerate(metricas):
         rotulo, valor, detalhe = metrica[:3]
-        cor = metrica[3] if len(metrica) > 3 else tema.PALETA_CATEGORIAS[i % len(tema.PALETA_CATEGORIAS)]
+        cor = metrica[3] if len(metrica) > 3 and metrica[3] else tema.PALETA_CATEGORIAS[i % len(tema.PALETA_CATEGORIAS)]
+        ajuda = metrica[4] if len(metrica) > 4 else None
+        dica = f" title='{escape(ajuda, quote=True)}'" if ajuda else ""
+        info = " <span class='ms-info'>ⓘ</span>" if ajuda else ""
         itens.append(
-            f"<div class='ms-cartao ms-acento' style='--cor:{cor}'><div class='ms-rotulo'>{escape(rotulo)}</div>"
+            f"<div class='ms-cartao ms-acento' style='--cor:{cor}'{dica}>"
+            f"<div class='ms-rotulo'>{escape(rotulo)}{info}</div>"
             f"<div class='ms-valor'>{escape(str(valor))}</div><div class='ms-detalhe'>{escape(detalhe or '')}</div></div>"
         )
     _render(f"<div class='ms-cartoes'>{''.join(itens)}</div>")

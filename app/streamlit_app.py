@@ -192,6 +192,9 @@ aba_atual, aba_historico, aba_automacao = st.tabs(["Status atual", "Histórico",
 # =============================================================================
 
 with aba_atual:
+    ui.intro("<b>Como está a integração de cada cliente agora?</b> Cada cliente é classificado pelo estado do seu "
+             "<b>último sync</b> com o Sankhya. Os cartões contam quantos clientes estão em cada estado (passe o mouse "
+             "para ver a regra) e a tabela abaixo mostra o detalhe de cada um.")
     contagem = df_atual["estado"].value_counts()
     ui.cartoes_estado(contagem, len(df_atual))
 
@@ -212,6 +215,19 @@ with aba_atual:
     tabela = tabela.sort_values(colunas, ascending=crescente, na_position="last")
 
     ui.tabela_status(tabela)
+    with st.expander("Como ler a tabela"):
+        st.markdown(
+            "- **Status:** estado do último sync do cliente (veja a regra de cada um passando o mouse nos cartões).\n"
+            "- **Último sync:** quando o sync mais recente foi criado (UTC) e há quanto tempo.\n"
+            "- **Itens afetados:** quantos registros o último sync processou.\n"
+            "- **Qtd. de erros:** registros com erro no último sync. Só aparece quando o último sync deu erro.\n"
+            "- **Dias seguidos com erro:** há quantos dias (UTC) o cliente está com erro sem nenhum sucesso no meio.\n"
+            "- **Últimos 7 syncs:** um quadrado por sync, do mais antigo ao mais recente (verde = sucesso, "
+            "vermelho = erro, laranja = pendente).\n"
+            "- **Erro predominante:** o tipo de erro mais frequente no último sync. Quando é `conflito_timespan`, "
+            "a linha menor abaixo traz a **geometria** do conflito (o motivo do choque de períodos), vinda da "
+            "última triagem; `+N` indica quantas outras geometrias existem."
+        )
     ui.nota(f"{len(tabela)} de {len(df_atual)} clientes · a ordenação por taxa de erro (7 dias) considera só syncs finalizados (pending fora da conta)"
             " · ⚠️ = a última coleta deste cliente falhou na API")
 
@@ -250,12 +266,19 @@ with aba_historico:
         st.info("Nenhum sync no período e clientes selecionados.")
         st.stop()
 
+    ui.intro("<b>Como cada cliente se comportou ao longo do tempo?</b> Escolha o período e os clientes nos filtros: "
+             "o mapa mostra o resultado dos syncs por cliente e dia (ou semana, em períodos longos), e o detalhe "
+             "abaixo traz todos os syncs de um cliente.", tema.ACENTO_EXECUCOES)
+
     # --- Mapa de calor: clientes x dias (ou x semanas, em períodos longos) ---
     semanal = (fim - inicio).days + 1 > LIMITE_DIAS_MAPA_DIARIO
     eixo_y = dict(title=None, axis=alt.Axis(ticks=False, domain=False, labelPadding=8, labelLimit=240))
 
     if not semanal:
         ui.secao("Status diário por cliente")
+        ui.descricao("em quais dias cada cliente teve erro ou ficou pendente?",
+                     "cada linha é um cliente e cada coluna um dia; a célula mostra o <b>último sync daquele dia</b>. "
+                     "Quanto mais vermelho no topo, mais problemas no período.")
         ui.legenda_status()
         diario = regras.status_diario(hist)
         diario["Status"] = diario["status"].map(tema.ROTULOS_STATUS)
@@ -287,6 +310,9 @@ with aba_historico:
                      "Clientes ordenados pela proporção de dias com erro no período. Célula vazia = nenhum sync naquele dia.")
     else:
         ui.secao("Taxa de erro semanal por cliente")
+        ui.descricao("quais clientes tiveram mais erros, e em que semanas?",
+                     "cada célula é uma semana; a cor é a <b>proporção de syncs com erro</b> entre os finalizados "
+                     "(quanto mais escura, mais erros). Em períodos longos o mapa é agrupado por semana para caber.")
         ui.legenda_gradiente(tema.RAMPA_ERRO, "0% de erro", "100% de erro")
         semanas = regras.taxa_erro_semanal(hist)
         semanas["Semana"] = semanas["semana"]
@@ -320,6 +346,9 @@ with aba_historico:
 
     # --- Detalhe de um cliente ---
     ui.secao("Detalhe do cliente")
+    ui.descricao("como foi o histórico de um cliente específico?",
+                 "os cartões resumem o estado atual e o período escolhido; o gráfico mostra cada sync como um ponto "
+                 "(altura = itens afetados, cor = status) e a tabela lista todos eles.")
     tenant = st.selectbox("Cliente", ordem_tenants, label_visibility="collapsed")
     syncs = hist.loc[hist["tenant"] == tenant].sort_values(["created", "id_sync"], ascending=False)
     syncs_todos = historico.loc[historico["tenant"] == tenant].sort_values(["created", "id_sync"], ascending=False)
@@ -329,12 +358,22 @@ with aba_historico:
     taxa = regras.taxa_erro(syncs_todos, agora)
     ui.cartoes_metricas([
         ("Status atual", estado_atual.iloc[0] if not estado_atual.empty else "fora da coleta", None,
-         tema.cor(estado_atual.iloc[0] if not estado_atual.empty else regras.SEM_SYNC)),
-        ("Taxa de erro (7 dias)", f"{taxa:.0%}" if pd.notna(taxa) else "—", "entre syncs finalizados"),
-        ("Dias seguidos com erro", regras.dias_seguidos_com_erro(syncs_todos), "até o sync mais recente"),
+         tema.cor(estado_atual.iloc[0] if not estado_atual.empty else regras.SEM_SYNC),
+         "Responde: como está o cliente agora? Cálculo: estado do ÚLTIMO sync (sucesso, erro, pendente, "
+         "pendente com problema ou 7d sem sync). Não depende do período selecionado."),
+        ("Taxa de erro (7 dias)", f"{taxa:.0%}" if pd.notna(taxa) else "—", "entre syncs finalizados", None,
+         "Responde: com que frequência os syncs recentes dão erro? Cálculo: syncs com erro ÷ syncs finalizados "
+         "(sucesso + erro) nos últimos 7 dias. Pendentes não entram na conta."),
+        ("Dias seguidos com erro", regras.dias_seguidos_com_erro(syncs_todos), "até o sync mais recente", None,
+         "Responde: há quanto tempo o cliente está com problema? Cálculo: dias (UTC) distintos da sequência atual "
+         "de syncs com erro, até o mais recente. Zero se o último sync não deu erro."),
         ("Último sucesso", ui.formatar_data_hora(ultimo_ok),
-         ui.formatar_ha_quanto((agora - ultimo_ok) / pd.Timedelta(hours=1)) if pd.notna(ultimo_ok) else "nenhum no histórico"),
-        ("Syncs no período", len(syncs), f"{inicio:%d/%m} a {fim:%d/%m}"),
+         ui.formatar_ha_quanto((agora - ultimo_ok) / pd.Timedelta(hours=1)) if pd.notna(ultimo_ok) else "nenhum no histórico",
+         None, "Responde: quando foi a última vez que este cliente sincronizou com sucesso? "
+               "Cálculo: o sync com status sucesso mais recente de todo o histórico (UTC)."),
+        ("Syncs no período", len(syncs), f"{inicio:%d/%m} a {fim:%d/%m}", None,
+         "Responde: quantos syncs o cliente teve no período filtrado? Cálculo: contagem de syncs criados entre "
+         "as datas escolhidas."),
     ])
 
     linha_tempo = syncs.assign(
@@ -400,11 +439,23 @@ with aba_automacao:
         duracoes = pd.Series(dados_correcoes.duracao_por_execucao_min(resumo), dtype=float)
         media_min = f"{duracoes.mean():.1f} min" if not duracoes.empty else "—"
 
+        ui.intro("<b>O que a automação de correção está fazendo?</b> A triagem roda uma vez por dia: detecta os erros "
+                 "dos clientes, aplica as correções que consegue e registra o resultado. Aqui você acompanha "
+                 "<b>quanto foi corrigido</b>, <b>quanto tempo levou</b>, <b>quais execuções falharam</b> e "
+                 "<b>quais clientes ainda não têm credencial</b> para a automação atuar.", tema.ACENTO_CORRECOES)
+
         ui.cartoes_metricas([
-            ("Correções aplicadas (total)", total_corrigido, "no período publicado", tema.ACENTO_CORRECOES),
-            ("Clientes com correção", clientes_corrigidos, None, tema.ACENTO_CREDENCIAIS),
-            ("Execuções registradas", int(execucoes), None, tema.ACENTO_EXECUCOES),
-            ("Duração média por execução", media_min, None, tema.ACENTO_TEMPO),
+            ("Correções aplicadas (total)", total_corrigido, "no período publicado", tema.ACENTO_CORRECOES,
+             "Responde: qual o volume de trabalho que a automação já resolveu? Cálculo: soma da quantidade de "
+             "correções de todas as execuções publicadas na planilha (aba Correcoes)."),
+            ("Clientes com correção", clientes_corrigidos, None, tema.ACENTO_CREDENCIAIS,
+             "Responde: em quantos clientes a automação já atuou? Cálculo: clientes distintos com ao menos "
+             "uma correção registrada."),
+            ("Execuções registradas", int(execucoes), None, tema.ACENTO_EXECUCOES,
+             "Responde: quantas vezes a automação rodou? Cálculo: execuções distintas (data/hora) no resumo."),
+            ("Duração média por execução", media_min, None, tema.ACENTO_TEMPO,
+             "Responde: quanto tempo uma execução inteira leva? Cálculo: média da duração de cada execução "
+             "(todos os clientes juntos), em minutos."),
         ])
 
         aba_corr, aba_tempo, aba_exec, aba_cred = st.tabs(["Correções", "Tempo", "Execuções", "Credenciais"])
@@ -417,24 +468,37 @@ with aba_automacao:
                 por_tipo_erro = df_correcoes.groupby("tipo_erro")["quantidade"].sum().sort_values(ascending=False)
                 cores_tipos = graficos.cores_por_categoria(por_tipo_erro.index)
 
+                ui.intro("<b>Que erros a automação corrige, quando e em quais clientes?</b> Os gráficos abaixo usam "
+                         "só correções <b>efetivamente aplicadas</b>, não os erros que ficaram para revisão manual.",
+                         tema.ACENTO_CORRECOES)
                 ui.secao("Quais erros estamos corrigindo")
+                ui.descricao("qual tipo de erro a automação mais corrige?",
+                             "cada barra é um tipo de erro e o número é o total de correções aplicadas. A cor de cada "
+                             "tipo é a mesma em todos os gráficos desta aba.")
                 st.altair_chart(graficos.barras_horizontais(por_tipo_erro, "Correções", cores=cores_tipos),
                                 width="stretch", theme=None)
 
                 ui.secao("Correções por dia")
+                ui.descricao("a automação está corrigindo mais ou menos ao longo do tempo?",
+                             "cada barra é um dia (UTC) com o total de correções aplicadas; dias sem correção ficam "
+                             "no eixo, sem barra.")
                 por_dia = regras.agregar_por_dia(df_correcoes, "data_hora_utc", "quantidade", "sum",
                                                  preencher_dias_vazios=True)
                 st.altair_chart(graficos.barras_por_dia(por_dia, "Correções", tema.ACENTO_CORRECOES),
                                 width="stretch", theme=None)
-                ui.nota("Total de correções aplicadas em cada dia (UTC).")
 
                 ui.secao("Correções por dia, por tipo de erro")
+                ui.descricao("o que compõe o total de cada dia?",
+                             "é o mesmo total do gráfico acima, dividido por tipo de erro (cada cor um tipo). "
+                             "Passe o mouse na barra para ver o tipo e a quantidade.")
                 st.altair_chart(graficos.barras_por_dia_e_tipo(
                     regras.agregar_por_dia_e_tipo(df_correcoes, "data_hora_utc", "tipo_erro", "quantidade"),
                     cores_tipos), width="stretch", theme=None)
-                ui.nota("Mesmo total do gráfico acima, dividido pelo tipo de erro corrigido (UTC).")
 
                 ui.secao("Erros corrigidos por cliente")
+                ui.descricao("em quais clientes a automação mais atuou?",
+                             "cada barra é um cliente e o número é o total de correções aplicadas nele. "
+                             "A tabela escondida abaixo abre o total por tipo de erro em cada cliente.")
                 por_tenant = df_correcoes.groupby("tenant")["quantidade"].sum().sort_values(ascending=False)
                 st.altair_chart(graficos.barras_horizontais(por_tenant, "Correções", cor=tema.ACENTO_CREDENCIAIS),
                                 width="stretch", theme=None)
@@ -445,9 +509,14 @@ with aba_automacao:
 
         # -------------------------------------------------------------------- Tempo
         with aba_tempo:
+            ui.intro("<b>Quanto tempo a automação leva?</b> Primeiro a execução inteira (todos os clientes juntos, "
+                     "em paralelo); depois o tempo de cada cliente sozinho, para achar os mais lentos. "
+                     "Tudo em minutos.", tema.ACENTO_TEMPO)
             ui.secao("Tempo de execução por run")
-            ui.nota("Duração da execução INTEIRA (todos os tenants daquele run, em paralelo) -- não confundir "
-                    "com o tempo de cada tenant individualmente, mais abaixo.")
+            ui.descricao("quanto dura uma execução da automação e isso está piorando?",
+                         "os cartões mostram a execução mais rápida, a mais lenta e a média; o gráfico mostra a "
+                         "duração média das execuções de cada dia (UTC). É a duração da execução <b>inteira</b>, "
+                         "não a de cada cliente.")
             if duracoes.empty:
                 ui.nota("Nenhuma execução com duração registrada ainda.")
             else:
@@ -463,11 +532,11 @@ with aba_automacao:
                 st.altair_chart(graficos.barras_por_dia(duracao_por_dia, "Duração média (min)", tema.ACENTO_TEMPO,
                                                         formato=".1f", detalhe_registros="Execuções no dia"),
                                 width="stretch", theme=None)
-                ui.nota("Duração média das execuções de cada dia (UTC).")
 
             ui.secao("Tempo de execução por tenant")
-            ui.nota("Média de quanto tempo CADA tenant levou sozinho (login incluso), entre as execuções "
-                    "registradas -- ajuda a achar quais tenants são os mais lentos.")
+            ui.descricao("quais clientes são os mais lentos para a automação?",
+                         "cada barra é a <b>média</b> de quanto tempo o cliente levou sozinho (login incluso), entre as "
+                         "execuções registradas. Clientes com poucas execuções têm média pouco representativa.")
             duracao_por_tenant = dados_correcoes.duracao_media_por_tenant(resumo)
             if not duracao_por_tenant:
                 ui.nota("Nenhuma execução com duração por tenant registrada ainda.")
@@ -478,7 +547,13 @@ with aba_automacao:
 
         # --------------------------------------------------------------- Execuções
         with aba_exec:
+            ui.intro("<b>As execuções da automação estão dando certo?</b> Conta, por cliente, em quantas "
+                     "execuções a automação terminou com sucesso e em quantas falhou.", tema.ACENTO_EXECUCOES)
             ui.secao("Sucesso × falha por tenant")
+            ui.descricao("em quais clientes a automação mais falha?",
+                         "cada linha é um cliente: o trecho verde são as execuções com sucesso e o vermelho as "
+                         "falhas (qualquer resultado diferente de sucesso, como login, sessão expirada, limite ou "
+                         "falha de processamento). Os clientes com mais falhas ficam no topo.")
             taxas = dados_correcoes.taxa_sucesso_por_tenant(resumo)
             if not taxas:
                 ui.nota("Sem dados suficientes ainda.")
@@ -486,14 +561,18 @@ with aba_automacao:
                 df_taxas = pd.DataFrame(taxas).T.sort_values("taxa_sucesso_pct")
                 df_taxas[["sucesso", "falha"]] = df_taxas[["sucesso", "falha"]].astype(int)
                 st.altair_chart(graficos.sucesso_falha_por_tenant(df_taxas), width="stretch", theme=None)
-                ui.nota("Número de execuções de cada cliente, por resultado. Falha = qualquer resultado diferente "
-                        "de sucesso (login, sessão expirada, limite, processamento).")
                 with st.expander("Taxa de sucesso por tenant (tabela)"):
                     st.dataframe(df_taxas, width="stretch")
 
         # ------------------------------------------------------------- Credenciais
         with aba_cred:
+            ui.intro("<b>A automação consegue atuar em todos os clientes?</b> Para corrigir um erro, a automação "
+                     "precisa de credencial do cliente. Aqui você vê quantos clientes ativos já têm credencial "
+                     "cadastrada.", tema.ACENTO_CREDENCIAIS)
             ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
+            ui.descricao("quantos clientes ativos a automação já alcança?",
+                         "compara os clientes ativos no HubSpot com os que têm credencial no arquivo de "
+                         "credenciais. A barra mostra a fatia coberta; quem está sem credencial aparece na lista.")
             try:
                 cobertura = carregar_cobertura_credenciais_cacheada(credenciais_json)
                 falha_cobertura = None

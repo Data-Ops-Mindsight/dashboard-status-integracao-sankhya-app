@@ -102,6 +102,16 @@ CSS = f"""
 }}
 .ms-nota {{ color: {TEXTO_SECUNDARIO}; font-size: .82rem; margin: 4px 0 0; }}
 
+/* Explicações: caixa de introdução da aba/seção e descrição de cada gráfico */
+.ms-intro {{
+  font-size: .92rem; line-height: 1.45; margin: 4px 0 16px; padding: 12px 18px;
+  color: color-mix(in srgb, var(--cor) 60%, {GRAFITE}); background: color-mix(in srgb, var(--cor) 8%, white);
+  border-left: 4px solid var(--cor); border-radius: 10px;
+}}
+.ms-descricao {{ color: {TEXTO_SECUNDARIO}; font-size: .85rem; line-height: 1.5; margin: 0 0 10px; }}
+.ms-descricao b {{ color: {GRAFITE}; font-weight: 600; }}
+.ms-info {{ color: {TEXTO_SECUNDARIO}; cursor: help; font-size: .8rem; }}
+
 /* Cartões */
 .ms-cartoes {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 6px 0 18px; }}
 .ms-cartao {{
