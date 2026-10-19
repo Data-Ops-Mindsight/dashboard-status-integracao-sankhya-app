@@ -379,6 +379,7 @@ with aba_historico:
         Status=syncs["status"].map(tema.ROTULOS_STATUS),
         Criado=sem_fuso(syncs["created"]),
         Horário=syncs["created"].dt.strftime("%d/%m %H:%M"),
+        tempo_total_min=syncs["total_time"] / 60,
     )
     base_linha = alt.Chart(linha_tempo).encode(
         x=alt.X("Criado:T", title=None, axis=alt.Axis(format="%d/%m", grid=False, labelOverlap=True)),
@@ -388,7 +389,7 @@ with aba_historico:
     pontos = base_linha.mark_circle(size=110, opacity=1, stroke="white", strokeWidth=2).encode(
         color=alt.Color("Status:N", scale=ESCALA_STATUS),
         tooltip=["Horário:N", "Status:N", alt.Tooltip("number_of_affected_items:Q", title="Itens afetados", format=",.0f"),
-                 alt.Tooltip("total_time:Q", title="Tempo total (s)", format=".0f"), alt.Tooltip("stage:N", title="Etapa")],
+                 alt.Tooltip("tempo_total_min:Q", title="Tempo total (min)", format=".1f"), alt.Tooltip("stage:N", title="Etapa")],
     )
     st.altair_chart(tema.configurar_grafico((trilha + pontos).properties(height=260)), width="stretch", theme=None)
 
@@ -399,7 +400,7 @@ with aba_historico:
             "Status": syncs["status"].map(tema.ROTULOS_STATUS),
             "Etapa": syncs["stage"],
             "Itens afetados": syncs["number_of_affected_items"],
-            "Tempo total (s)": syncs["total_time"].round(0),
+            "Tempo total (min)": (syncs["total_time"] / 60).round(1),
             "Tipo": syncs["sync_type"],
         }),
         hide_index=True,
@@ -437,7 +438,7 @@ with aba_correcoes:
             # atualiza sozinha na próxima execução real
             # (relatorio_sheets.py sempre confere/corrige o cabeçalho).
             duracoes = pd.Series(dtype=float)
-        media_min = f"{duracoes.mean() / 60:.0f} min" if not duracoes.empty else "—"
+        media_min = f"{duracoes.mean() / 60:.1f} min" if not duracoes.empty else "—"
 
         ui.cartoes_metricas([
             ("Correções aplicadas (total)", total_corrigido, None),
@@ -500,7 +501,7 @@ with aba_correcoes:
                     .assign(duracao_min=lambda d: pd.to_numeric(d["duracao_execucao_s"], errors="coerce") / 60))
             duracao_por_dia = regras.agregar_por_dia(runs, "data_hora_utc", "duracao_min", "mean",
                                                      preencher_dias_vazios=True)
-            grafico_barras_por_dia(duracao_por_dia, "Duração média (min)", formato=".0f",
+            grafico_barras_por_dia(duracao_por_dia, "Duração média (min)", formato=".1f",
                                    detalhe_registros="Execuções no dia")
             ui.nota("Duração média das execuções de cada dia (UTC).")
 
@@ -511,7 +512,7 @@ with aba_correcoes:
         if not duracao_por_tenant:
             ui.nota("Nenhuma execução com duração por tenant registrada ainda.")
         else:
-            serie_duracao_tenant = pd.Series(duracao_por_tenant, name="duração média (s)").sort_values(ascending=False)
+            serie_duracao_tenant = (pd.Series(duracao_por_tenant, name="duração média (min)") / 60).round(1).sort_values(ascending=False)
             st.bar_chart(serie_duracao_tenant, color=tema.ROXO)
 
         ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
