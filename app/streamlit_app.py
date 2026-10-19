@@ -215,19 +215,8 @@ with aba_atual:
     tabela = tabela.sort_values(colunas, ascending=crescente, na_position="last")
 
     ui.tabela_status(tabela)
-    with st.expander("Como ler a tabela"):
-        st.markdown(
-            "- **Status:** estado do último sync do cliente (veja a regra de cada um passando o mouse nos cartões).\n"
-            "- **Último sync:** quando o sync mais recente foi criado (UTC) e há quanto tempo.\n"
-            "- **Itens afetados:** quantos registros o último sync processou.\n"
-            "- **Qtd. de erros:** registros com erro no último sync. Só aparece quando o último sync deu erro.\n"
-            "- **Dias seguidos com erro:** há quantos dias (UTC) o cliente está com erro sem nenhum sucesso no meio.\n"
-            "- **Últimos 7 syncs:** um quadrado por sync, do mais antigo ao mais recente (verde = sucesso, "
-            "vermelho = erro, laranja = pendente).\n"
-            "- **Erro predominante:** o tipo de erro mais frequente no último sync. Quando é `conflito_timespan`, "
-            "a linha menor abaixo traz a **geometria** do conflito (o motivo do choque de períodos), vinda da "
-            "última triagem; `+N` indica quantas outras geometrias existem."
-        )
+    with st.expander("Entenda cada coluna", expanded=True):
+        st.markdown(ui.explicacao_das_colunas())
     ui.nota(f"{len(tabela)} de {len(df_atual)} clientes · a ordenação por taxa de erro (7 dias) considera só syncs finalizados (pending fora da conta)"
             " · ⚠️ = a última coleta deste cliente falhou na API")
 

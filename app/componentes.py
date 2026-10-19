@@ -173,11 +173,24 @@ def _titulo_erro_predominante(data_coleta):
 
 COLUNA_QTD_ERROS = "Qtd. de erros"
 COLUNA_DIAS_SEGUIDOS = "Dias seguidos com erro"
+COLUNA_ERRO_PREDOMINANTE = "Erro predominante"
 DICAS_COLUNAS = {
-    COLUNA_DIAS_SEGUIDOS: "Há quantos dias seguidos o cliente está com erro: dias distintos (UTC) da sequência atual "
-                          "de syncs com erro, até o mais recente. Syncs repetidos no mesmo dia contam um dia só.",
+    "Cliente": "Nome do cliente (tenant) com integração Folha Sankhya ativa. O ⚠️ ao lado indica que a última "
+               "coleta deste cliente falhou na API, então o status pode estar desatualizado.",
+    "Status": "Estado do ÚLTIMO sync do cliente: Sucesso, Erro, Pendente, Pendente com problema (pendente há mais "
+              "de 24h ou 2 pendentes seguidos) ou 7d sem sync (nenhum sync há mais de 7 dias).",
+    "Último sync": "Quando o sync mais recente do cliente foi criado (horário UTC, como no sistema) e há quanto "
+                   "tempo isso foi.",
+    "Itens afetados": "Quantos registros (colaboradores/itens) o último sync processou.",
     COLUNA_QTD_ERROS: "Registros com erro no ÚLTIMO sync do cliente (sync_history_items + sync_datas). "
                       "Só aparece quando o último sync deu erro.",
+    COLUNA_DIAS_SEGUIDOS: "Há quantos dias seguidos o cliente está com erro: dias distintos (UTC) da sequência atual "
+                          "de syncs com erro, até o mais recente. Syncs repetidos no mesmo dia contam um dia só.",
+    "Últimos 7 syncs": "Um quadrado por sync, do mais antigo (esquerda) ao mais recente (direita): verde = sucesso, "
+                       "vermelho = erro, laranja = pendente, vazio = ainda sem sync.",
+    COLUNA_ERRO_PREDOMINANTE: "Tipo de erro mais frequente no ÚLTIMO sync (só aparece quando ele deu erro). Quando "
+                              "é conflito_timespan, a linha menor traz a geometria do conflito (o motivo do choque "
+                              "de períodos), vinda da última triagem; +N indica quantas outras geometrias existem.",
 }
 
 
@@ -193,6 +206,11 @@ def _th(titulo, numerica, dica=None):
 
 def _formatar_qtd(valor):
     return "—" if pd.isna(valor) else f"{int(valor):,}".replace(",", ".")
+
+
+def explicacao_das_colunas():
+    """Texto (markdown) com a explicação de cada coluna da tabela, a partir das mesmas dicas dos cabeçalhos."""
+    return "\n".join(f"- **{coluna}:** {dica}" for coluna, dica in DICAS_COLUNAS.items())
 
 
 def tabela_status(df):
@@ -234,7 +252,7 @@ def tabela_status(df):
         cabecalhos.append(COLUNA_QTD_ERROS)
     cabecalhos += [COLUNA_DIAS_SEGUIDOS, "Últimos 7 syncs"]
     if tem_classificacao:
-        cabecalhos.append("Erro predominante")
+        cabecalhos.append(COLUNA_ERRO_PREDOMINANTE)
     numericas = ("Itens afetados", COLUNA_QTD_ERROS, COLUNA_DIAS_SEGUIDOS)
     ths = "".join(_th(c, c in numericas, DICAS_COLUNAS.get(c)) for c in cabecalhos)
     _render(f"<div class='ms-tabela-wrap'><table class='ms-tabela'><thead><tr>{ths}</tr></thead>"

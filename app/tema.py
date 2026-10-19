@@ -142,6 +142,8 @@ CSS = f"""
   color: {TEXTO_SECUNDARIO}; padding: 12px; border-bottom: 1px solid {BORDA}; background: #FDFAF7;
   white-space: nowrap;
 }}
+.ms-tabela th[title] {{ cursor: help; }}
+.ms-tabela th[title]::after {{ content: " ⓘ"; font-size: .8rem; opacity: .7; }}
 .ms-tabela th.ms-quebra {{ white-space: normal; min-width: 96px; line-height: 1.3; }}
 .ms-tabela td {{ padding: 10px 12px; border-bottom: 1px solid #F4EEE8; vertical-align: middle; white-space: nowrap; }}
 .ms-tabela tr:last-child td {{ border-bottom: none; }}
