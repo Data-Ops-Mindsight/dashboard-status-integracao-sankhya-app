@@ -116,24 +116,24 @@ def test_taxa_sucesso_por_tenant_lista_vazia():
 
 def test_duracao_media_por_tenant_calcula_media_entre_execucoes():
     resumo = [
-        {"tenant": "acme", "duracao_tenant_s": 10.0},
-        {"tenant": "acme", "duracao_tenant_s": 20.0},
-        {"tenant": "outra", "duracao_tenant_s": 5.0},
+        {"tenant": "acme", "duracao_tenant_s": 60.0},
+        {"tenant": "acme", "duracao_tenant_s": 120.0},
+        {"tenant": "outra", "duracao_tenant_s": 30.0},
     ]
 
-    assert dados_correcoes.duracao_media_por_tenant(resumo) == {"acme": 15.0, "outra": 5.0}
+    assert dados_correcoes.duracao_media_por_tenant(resumo) == {"acme": 1.5, "outra": 0.5}   # em minutos
 
 
 def test_duracao_media_por_tenant_ignora_linhas_sem_o_campo():
     """Linhas publicadas antes de duracao_tenant_s existir não podem
     contar como zero -- puxaria a média pra baixo sem motivo."""
     resumo = [
-        {"tenant": "acme", "duracao_tenant_s": 10.0},
+        {"tenant": "acme", "duracao_tenant_s": 60.0},
         {"tenant": "acme"},  # execução antiga, sem o campo
         {"tenant": "acme", "duracao_tenant_s": ""},  # célula vazia no Sheets
     ]
 
-    assert dados_correcoes.duracao_media_por_tenant(resumo) == {"acme": 10.0}
+    assert dados_correcoes.duracao_media_por_tenant(resumo) == {"acme": 1.0}
 
 
 def test_duracao_media_por_tenant_lista_vazia():
@@ -272,3 +272,21 @@ def test_geometria_do_conflito_usa_so_a_execucao_mais_recente_e_a_predominante()
     assert dados_correcoes.geometria_do_conflito_por_tenant(classificacao) == {
         "alfa": {"geometria": "excede_fim_do_employee_record", "quantidade": 7, "outras": 1}}
     assert dados_correcoes.geometria_do_conflito_por_tenant([]) == {}
+
+
+def test_duracao_por_execucao_aceita_minutos_com_virgula_e_o_formato_antigo_em_segundos():
+    resumo = [
+        {"data_hora_utc": "r1", "tenant": "a", "duracao_execucao_min": "11,7", "duracao_tenant_s": "115,8"},
+        {"data_hora_utc": "r1", "tenant": "b", "duracao_execucao_min": "11,7", "duracao_tenant_s": 200},   # mesma execução
+        {"data_hora_utc": "r2", "tenant": "a", "duracao_execucao_min": 26, "duracao_tenant_s": ""},
+        {"data_hora_utc": "r0", "tenant": "a", "duracao_execucao_s": 600},                                   # linha antiga
+        {"data_hora_utc": "r9", "tenant": "a", "duracao_execucao_min": ""},                                  # sem duração
+    ]
+    assert dados_correcoes.duracao_por_execucao_min(resumo) == {"r1": 11.7, "r2": 26.0, "r0": 10.0}
+    assert dados_correcoes.duracao_media_por_tenant(resumo) == {"a": 1.9, "b": 3.3}   # 115,8 s e 200 s, em minutos
+
+
+def test_duracao_media_por_tenant_le_a_coluna_nova_em_minutos():
+    resumo = [{"tenant": "a", "duracao_tenant_min": "1,9"}, {"tenant": "a", "duracao_tenant_min": "2,1"},
+              {"tenant": "b", "duracao_tenant_min": ""}]
+    assert dados_correcoes.duracao_media_por_tenant(resumo) == {"a": 2.0}

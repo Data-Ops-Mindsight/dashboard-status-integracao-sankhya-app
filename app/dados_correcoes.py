@@ -62,7 +62,7 @@ def carregar_resumo(
     try:
         planilha = cliente.open_by_key(spreadsheet_id)
         worksheet = planilha.get_worksheet_by_id(gid)
-        return worksheet.get_all_records()
+        return worksheet.get_all_records(numericise_ignore=["all"])  # "11,7" (pt-BR) viraria 117 na conversão automática
     except ErroFonteDados:
         raise
     except Exception as e:
@@ -236,18 +236,48 @@ def taxa_sucesso_por_tenant(resumo: Iterable[dict]) -> dict[str, dict]:
     return resultado
 
 
+def numero(valor):
+    """float de um valor da planilha, aceitando vírgula decimal ("11,7", locale pt-BR); None se vazio/inválido."""
+    if valor in (None, ""):
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    try:
+        return float(str(valor).strip().replace(",", "."))
+    except ValueError:
+        return None
+
+
+def duracao_por_execucao_min(resumo: Iterable[dict]) -> dict[str, float]:
+    """`{data_hora_utc: minutos}`, uma entrada por execução (o resumo tem uma linha por tenant em cada uma).
+
+    Lê `duracao_execucao_min` (atual) ou, em linhas antigas, `duracao_execucao_s` / 60."""
+    resultado: dict[str, float] = {}
+    for linha in resumo:
+        minutos = numero(linha.get("duracao_execucao_min"))
+        if minutos is None:
+            segundos = numero(linha.get("duracao_execucao_s"))
+            minutos = None if segundos is None else segundos / 60
+        if minutos is not None:
+            resultado.setdefault(linha.get("data_hora_utc"), minutos)
+    return resultado
+
+
 def duracao_media_por_tenant(resumo: Iterable[dict]) -> dict[str, float]:
-    """Média de `duracao_tenant_s` por tenant, entre as execuções que têm
-    esse valor registrado -- linhas sem o campo são ignoradas, nunca
-    contam como zero (senão puxariam a média pra baixo artificialmente)."""
+    """Média, EM MINUTOS, do tempo de cada tenant (`duracao_tenant_min`; em linhas antigas,
+    `duracao_tenant_s` / 60), entre as execuções que têm esse valor registrado -- linhas sem o
+    campo são ignoradas, nunca contam como zero (senão puxariam a média pra baixo artificialmente)."""
     somas: dict[str, float] = {}
     contagens: dict[str, int] = {}
     for linha in resumo:
-        valor = linha.get("duracao_tenant_s")
-        if valor in (None, ""):
+        valor = numero(linha.get("duracao_tenant_min"))
+        if valor is None:
+            segundos = numero(linha.get("duracao_tenant_s"))
+            valor = None if segundos is None else segundos / 60
+        if valor is None:
             continue
         tenant = linha.get("tenant")
-        somas[tenant] = somas.get(tenant, 0.0) + float(valor)
+        somas[tenant] = somas.get(tenant, 0.0) + valor
         contagens[tenant] = contagens.get(tenant, 0) + 1
     return {tenant: round(somas[tenant] / contagens[tenant], 1) for tenant in somas}
 

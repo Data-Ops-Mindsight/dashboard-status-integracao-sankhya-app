@@ -431,14 +431,9 @@ with aba_correcoes:
 
         total_corrigido = int(df_correcoes["quantidade"].sum()) if not df_correcoes.empty else 0
         execucoes = df_resumo["data_hora_utc"].nunique()
-        if "duracao_execucao_s" in df_resumo.columns:
-            duracoes = pd.to_numeric(df_resumo["duracao_execucao_s"], errors="coerce").dropna()
-        else:
-            # Linhas publicadas antes dessa coluna existir -- a planilha se
-            # atualiza sozinha na próxima execução real
-            # (relatorio_sheets.py sempre confere/corrige o cabeçalho).
-            duracoes = pd.Series(dtype=float)
-        media_min = f"{duracoes.mean() / 60:.1f} min" if not duracoes.empty else "—"
+        # Uma duração por execução (o resumo tem uma linha por tenant em cada uma)
+        duracoes = pd.Series(dados_correcoes.duracao_por_execucao_min(resumo), dtype=float)
+        media_min = f"{duracoes.mean():.1f} min" if not duracoes.empty else "—"
 
         ui.cartoes_metricas([
             ("Correções aplicadas (total)", total_corrigido, None),
@@ -496,9 +491,8 @@ with aba_correcoes:
         if duracoes.empty:
             ui.nota("Nenhuma execução com duração registrada ainda.")
         else:
-            # Uma linha por run (o resumo tem uma linha por tenant de cada run), em minutos
-            runs = (df_resumo.drop_duplicates(subset=["data_hora_utc"])
-                    .assign(duracao_min=lambda d: pd.to_numeric(d["duracao_execucao_s"], errors="coerce") / 60))
+            # Uma linha por run, em minutos
+            runs = pd.DataFrame({"data_hora_utc": duracoes.index, "duracao_min": duracoes.values})
             duracao_por_dia = regras.agregar_por_dia(runs, "data_hora_utc", "duracao_min", "mean",
                                                      preencher_dias_vazios=True)
             grafico_barras_por_dia(duracao_por_dia, "Duração média (min)", formato=".1f",
@@ -512,7 +506,7 @@ with aba_correcoes:
         if not duracao_por_tenant:
             ui.nota("Nenhuma execução com duração por tenant registrada ainda.")
         else:
-            serie_duracao_tenant = (pd.Series(duracao_por_tenant, name="duração média (min)") / 60).round(1).sort_values(ascending=False)
+            serie_duracao_tenant = pd.Series(duracao_por_tenant, name="duração média (min)").sort_values(ascending=False)
             st.bar_chart(serie_duracao_tenant, color=tema.ROXO)
 
         ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
