@@ -34,6 +34,16 @@ CORES_ESTADO = {
 ESTADO_DO_STATUS = {"success": regras.SUCESSO, "error": regras.ERRO, "pending": regras.PENDENTE}
 ROTULOS_STATUS = {"success": "Sucesso", "error": "Erro", "pending": "Pendente"}
 
+# --- Acentos por seção da aba "Automação" (cada assunto com a sua cor; verde/vermelho/laranja
+# ficam reservados aos status) ---
+ACENTO_CORRECOES = ROXO
+ACENTO_TEMPO = "#0E9AA7"        # azul-petróleo
+ACENTO_EXECUCOES = "#2F6FDE"    # azul
+ACENTO_CREDENCIAIS = "#C2398B"  # magenta
+
+# Categorias (tipos de erro, etc.): distinguíveis entre si e fora das cores de status
+PALETA_CATEGORIAS = ["#7321E8", "#0E9AA7", "#E0508B", "#2F6FDE", "#C98A12", "#5B6B7B", "#9A4D2E", "#8E5BD9"]
+
 # Rampa sequencial (um só matiz, claro -> escuro) para taxa de erro
 RAMPA_ERRO = ["#EDD9D5", "#E8A29D", "#C8322F", "#7E1A17"]
 
@@ -102,6 +112,8 @@ CSS = f"""
 .ms-cartao .ms-rotulo {{ display: flex; align-items: center; gap: 8px; font-size: .85rem; color: {TEXTO_SECUNDARIO}; }}
 .ms-cartao .ms-valor {{ font-family: {FONTE_TITULO}; font-weight: 600; font-size: 2rem; line-height: 1.2; color: {GRAFITE}; margin-top: 4px; }}
 .ms-cartao .ms-detalhe {{ font-size: .8rem; color: {TEXTO_SECUNDARIO}; }}
+.ms-cartao.ms-acento {{ background: color-mix(in srgb, var(--cor) 5%, white); }}
+.ms-cartao.ms-acento .ms-valor {{ color: color-mix(in srgb, var(--cor) 55%, {GRAFITE}); }}
 .ms-cartao.ms-zerado .ms-valor {{ color: #B9B2AB; }}
 
 /* Selo de status */
@@ -163,7 +175,11 @@ CSS = f"""
 
 /* Abas */
 .stTabs [data-baseweb="tab-list"] {{ gap: 6px; }}
-.stTabs [data-baseweb="tab"] {{ font-family: {FONTE_TITULO}; font-weight: 600; }}
+.stTabs [data-baseweb="tab"] {{ font-family: {FONTE_TITULO}; font-weight: 600; padding: 8px 16px; }}
+.stTabs [aria-selected="true"] {{ color: {ROXO} !important; }}
+.stTabs [data-baseweb="tab-highlight"] {{ background-color: {ROXO} !important; }}
+.stTabs .stTabs [data-baseweb="tab"] {{ font-size: .9rem; padding: 6px 14px; }}
+.stTabs .stTabs [data-baseweb="tab-highlight"] {{ height: 2px; }}
 </style>
 """
 

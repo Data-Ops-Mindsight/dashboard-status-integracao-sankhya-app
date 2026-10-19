@@ -88,12 +88,17 @@ def cartoes_estado(contagem, total):
 
 
 def cartoes_metricas(metricas):
-    """metricas: lista de (rótulo, valor, detalhe)."""
-    itens = [
-        f"<div class='ms-cartao' style='--cor:{tema.LILAS}'><div class='ms-rotulo'>{escape(rotulo)}</div>"
-        f"<div class='ms-valor'>{escape(str(valor))}</div><div class='ms-detalhe'>{escape(detalhe or '')}</div></div>"
-        for rotulo, valor, detalhe in metricas
-    ]
+    """metricas: lista de (rótulo, valor, detalhe) ou (rótulo, valor, detalhe, cor).
+
+    Sem cor explícita, cada cartão ganha uma cor da paleta (em ordem), para não ficarem todos iguais."""
+    itens = []
+    for i, metrica in enumerate(metricas):
+        rotulo, valor, detalhe = metrica[:3]
+        cor = metrica[3] if len(metrica) > 3 else tema.PALETA_CATEGORIAS[i % len(tema.PALETA_CATEGORIAS)]
+        itens.append(
+            f"<div class='ms-cartao ms-acento' style='--cor:{cor}'><div class='ms-rotulo'>{escape(rotulo)}</div>"
+            f"<div class='ms-valor'>{escape(str(valor))}</div><div class='ms-detalhe'>{escape(detalhe or '')}</div></div>"
+        )
     _render(f"<div class='ms-cartoes'>{''.join(itens)}</div>")
 
 

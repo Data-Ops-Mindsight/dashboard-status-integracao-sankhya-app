@@ -50,3 +50,11 @@ def test_subtitulo_com_a_geometria_do_conflito_timespan(monkeypatch):
     ])
     assert html.count("sobreposicao (3) +1") == 1               # só no conflito_timespan
     assert "email_invalido (2)</span></td>" in html             # sem subtítulo nos outros tipos
+
+
+def test_cartoes_metricas_usam_a_cor_informada_ou_variam_pela_paleta(monkeypatch):
+    capturado = []
+    monkeypatch.setattr(componentes, "_render", capturado.append)
+    componentes.cartoes_metricas([("a", 1, None), ("b", 2, "det"), ("c", 3, None, "#123456")])
+    cores = re.findall(r"--cor:(#[0-9A-Fa-f]{6})", capturado[0])
+    assert cores[0] != cores[1] and cores[2] == "#123456"

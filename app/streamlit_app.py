@@ -12,13 +12,14 @@ import recarga
 
 # Módulos locais em ordem de dependência (quem é importado por outro vem antes).
 # Se um deploy atualizou algum arquivo com o app aberto, recarrega todos antes de usar.
-MODULOS_LOCAIS = ["senha", "regras", "tema", "dados", "dados_correcoes", "componentes", "autenticacao"]
+MODULOS_LOCAIS = ["senha", "regras", "tema", "graficos", "dados", "dados_correcoes", "componentes", "autenticacao"]
 recarga.recarregar_modulos_alterados(MODULOS_LOCAIS)
 
 import autenticacao  # noqa: E402
 import componentes as ui  # noqa: E402
 import dados  # noqa: E402
 import dados_correcoes  # noqa: E402
+import graficos  # noqa: E402
 import regras  # noqa: E402
 import tema  # noqa: E402
 
@@ -119,46 +120,6 @@ def recarregar():
     carregar_geometrias_cacheado.clear()
 
 
-def grafico_barras_por_dia(df_dia, titulo_valor, formato=",.0f", detalhe_registros=None):
-    """Barras por dia (eixo dd/mm), no padrão visual do dashboard."""
-    tooltip = [alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"),
-               alt.Tooltip("valor:Q", title=titulo_valor, format=formato)]
-    if detalhe_registros:
-        tooltip.append(alt.Tooltip("registros:Q", title=detalhe_registros))
-    # Domínio explícito: dias sem valor (ex.: sem execução) continuam no eixo, só sem barra
-    # Mais de ~1 ano no eixo: inclui o ano para dias com o mesmo dd/mm não colidirem
-    formato_dia = "%d/%m/%y" if len(df_dia) > 300 else "%d/%m"
-    df_dia = df_dia.assign(dia_rotulo=df_dia["dia"].dt.strftime(formato_dia))
-    dias = df_dia["dia_rotulo"].tolist()
-    grafico = alt.Chart(df_dia).mark_bar(color=tema.ROXO, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-        x=alt.X("dia_rotulo:N", title=None, sort=dias, scale=alt.Scale(domain=dias),
-                axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
-        y=alt.Y("valor:Q", title=titulo_valor, axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
-        tooltip=tooltip,
-    ).properties(height=260)
-    st.altair_chart(tema.configurar_grafico(grafico), width="stretch", theme=None)
-
-
-CORES_TIPOS = ["#3B6EA5", "#D18B2C", "#5E8C7B", "#A25B8B", "#7A7F87", "#B08968", "#8FA9C9", "#C9A96E"]
-
-
-def grafico_barras_por_dia_e_tipo(df_dia_tipo):
-    """Barras empilhadas por dia, uma cor por tipo de erro corrigido."""
-    df_dia_tipo = df_dia_tipo.assign(dia_rotulo=df_dia_tipo["dia"].dt.strftime("%d/%m"))
-    dias = df_dia_tipo.sort_values("dia")["dia_rotulo"].drop_duplicates().tolist()
-    tipos = sorted(df_dia_tipo["tipo"].unique())
-    grafico = alt.Chart(df_dia_tipo).mark_bar().encode(
-        x=alt.X("dia_rotulo:N", title=None, sort=dias, scale=alt.Scale(domain=dias),
-                axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
-        y=alt.Y("valor:Q", title="Correções", axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
-        color=alt.Color("tipo:N", title="Tipo de erro",
-                        scale=alt.Scale(domain=tipos, range=(CORES_TIPOS * 3)[:len(tipos)])),
-        tooltip=[alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"), alt.Tooltip("tipo:N", title="Tipo de erro"),
-                 alt.Tooltip("valor:Q", title="Correções", format=",.0f")],
-    ).properties(height=260)
-    st.altair_chart(tema.configurar_grafico(grafico), width="stretch", theme=None)
-
-
 def sem_fuso(serie):
     """Altair/Vega interpreta datas sem fuso como horário local do navegador."""
     return serie.dt.tz_localize(None)
@@ -224,7 +185,7 @@ if usuario:
 col_recarregar.button("↻ Recarregar dados", on_click=recarregar, width="stretch",
                       help="Busca os dados mais recentes agora (normalmente atualizam sozinhos a cada 10 min)")
 
-aba_atual, aba_historico, aba_correcoes = st.tabs(["Status atual", "Histórico", "Correções aplicadas"])
+aba_atual, aba_historico, aba_automacao = st.tabs(["Status atual", "Histórico", "Automação"])
 
 # =============================================================================
 # Aba 1 — Status atual
@@ -367,7 +328,8 @@ with aba_historico:
     ultimo_ok = regras.ultimo_sucesso(syncs_todos)
     taxa = regras.taxa_erro(syncs_todos, agora)
     ui.cartoes_metricas([
-        ("Status atual", estado_atual.iloc[0] if not estado_atual.empty else "fora da coleta", None),
+        ("Status atual", estado_atual.iloc[0] if not estado_atual.empty else "fora da coleta", None,
+         tema.cor(estado_atual.iloc[0] if not estado_atual.empty else regras.SEM_SYNC)),
         ("Taxa de erro (7 dias)", f"{taxa:.0%}" if pd.notna(taxa) else "—", "entre syncs finalizados"),
         ("Dias seguidos com erro", regras.dias_seguidos_com_erro(syncs_todos), "até o sync mais recente"),
         ("Último sucesso", ui.formatar_data_hora(ultimo_ok),
@@ -414,7 +376,7 @@ with aba_historico:
 # correção, migrados do antigo dashboard/ do repositório de origem)
 # =============================================================================
 
-with aba_correcoes:
+with aba_automacao:
     credenciais_json = credenciais_sheets()
     try:
         resumo, correcoes = carregar_correcoes(credenciais_json)
@@ -428,102 +390,134 @@ with aba_correcoes:
     else:
         df_resumo = pd.DataFrame(resumo)
         df_correcoes = pd.DataFrame(correcoes)
+        sem_correcoes = df_correcoes.empty
+        aviso_sem_correcoes = 'Ainda não há correções detalhadas publicadas (aba "Correcoes").'
 
-        total_corrigido = int(df_correcoes["quantidade"].sum()) if not df_correcoes.empty else 0
+        total_corrigido = int(df_correcoes["quantidade"].sum()) if not sem_correcoes else 0
+        clientes_corrigidos = int(df_correcoes["tenant"].nunique()) if not sem_correcoes else 0
         execucoes = df_resumo["data_hora_utc"].nunique()
         # Uma duração por execução (o resumo tem uma linha por tenant em cada uma)
         duracoes = pd.Series(dados_correcoes.duracao_por_execucao_min(resumo), dtype=float)
         media_min = f"{duracoes.mean():.1f} min" if not duracoes.empty else "—"
 
         ui.cartoes_metricas([
-            ("Correções aplicadas (total)", total_corrigido, None),
-            ("Execuções registradas", int(execucoes), None),
-            ("Duração média por execução", media_min, None),
+            ("Correções aplicadas (total)", total_corrigido, "no período publicado", tema.ACENTO_CORRECOES),
+            ("Clientes com correção", clientes_corrigidos, None, tema.ACENTO_CREDENCIAIS),
+            ("Execuções registradas", int(execucoes), None, tema.ACENTO_EXECUCOES),
+            ("Duração média por execução", media_min, None, tema.ACENTO_TEMPO),
         ])
 
-        ui.secao("Quais erros estamos corrigindo")
-        if df_correcoes.empty:
-            ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
-        else:
-            por_tipo_erro = df_correcoes.groupby("tipo_erro")["quantidade"].sum().sort_values(ascending=False)
-            col_a, col_b = st.columns([2, 1])
-            col_a.bar_chart(por_tipo_erro, color=tema.ROXO)
-            col_b.dataframe(por_tipo_erro.rename("quantidade"), width="stretch")
+        aba_corr, aba_tempo, aba_exec, aba_cred = st.tabs(["Correções", "Tempo", "Execuções", "Credenciais"])
 
-        ui.secao("Erros corrigidos por cliente")
-        if df_correcoes.empty:
-            ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
-        else:
-            por_tenant = df_correcoes.groupby("tenant")["quantidade"].sum().sort_values(ascending=False)
-            st.bar_chart(por_tenant, color=tema.ROXO)
+        # ---------------------------------------------------------------- Correções
+        with aba_corr:
+            if sem_correcoes:
+                ui.nota(aviso_sem_correcoes)
+            else:
+                por_tipo_erro = df_correcoes.groupby("tipo_erro")["quantidade"].sum().sort_values(ascending=False)
+                cores_tipos = graficos.cores_por_categoria(por_tipo_erro.index)
 
-            st.caption("Tipo de erro por cliente")
-            matriz = df_correcoes.pivot_table(
-                index="tenant", columns="tipo_erro", values="quantidade", aggfunc="sum", fill_value=0
-            )
-            st.dataframe(matriz, width="stretch")
+                ui.secao("Quais erros estamos corrigindo")
+                st.altair_chart(graficos.barras_horizontais(por_tipo_erro, "Correções", cores=cores_tipos),
+                                width="stretch", theme=None)
 
-        ui.secao("Correções aplicadas ao longo do tempo")
-        if df_correcoes.empty:
-            ui.nota("Ainda não há correções detalhadas publicadas (aba \"Correcoes\").")
-        else:
-            por_dia = regras.agregar_por_dia(df_correcoes, "data_hora_utc", "quantidade", "sum",
-                                             preencher_dias_vazios=True)
-            grafico_barras_por_dia(por_dia, "Correções")
-            ui.nota("Total de correções aplicadas em cada dia (UTC).")
+                ui.secao("Correções por dia")
+                por_dia = regras.agregar_por_dia(df_correcoes, "data_hora_utc", "quantidade", "sum",
+                                                 preencher_dias_vazios=True)
+                st.altair_chart(graficos.barras_por_dia(por_dia, "Correções", tema.ACENTO_CORRECOES),
+                                width="stretch", theme=None)
+                ui.nota("Total de correções aplicadas em cada dia (UTC).")
 
-            ui.secao("Correções por dia, por tipo de erro")
-            grafico_barras_por_dia_e_tipo(
-                regras.agregar_por_dia_e_tipo(df_correcoes, "data_hora_utc", "tipo_erro", "quantidade"))
-            ui.nota("Mesmo total do gráfico acima, dividido pelo tipo de erro corrigido (UTC).")
+                ui.secao("Correções por dia, por tipo de erro")
+                st.altair_chart(graficos.barras_por_dia_e_tipo(
+                    regras.agregar_por_dia_e_tipo(df_correcoes, "data_hora_utc", "tipo_erro", "quantidade"),
+                    cores_tipos), width="stretch", theme=None)
+                ui.nota("Mesmo total do gráfico acima, dividido pelo tipo de erro corrigido (UTC).")
 
-        ui.secao("Taxa de sucesso × falha por tenant")
-        taxas = dados_correcoes.taxa_sucesso_por_tenant(resumo)
-        if not taxas:
-            ui.nota("Sem dados suficientes ainda.")
-        else:
-            df_taxas = pd.DataFrame(taxas).T.sort_values("taxa_sucesso_pct")
-            st.dataframe(df_taxas, width="stretch")
+                ui.secao("Erros corrigidos por cliente")
+                por_tenant = df_correcoes.groupby("tenant")["quantidade"].sum().sort_values(ascending=False)
+                st.altair_chart(graficos.barras_horizontais(por_tenant, "Correções", cor=tema.ACENTO_CREDENCIAIS),
+                                width="stretch", theme=None)
+                with st.expander("Tipo de erro por cliente (tabela)"):
+                    matriz = df_correcoes.pivot_table(
+                        index="tenant", columns="tipo_erro", values="quantidade", aggfunc="sum", fill_value=0)
+                    st.dataframe(matriz, width="stretch")
 
-        ui.secao("Tempo de execução por run")
-        ui.nota("Duração da execução INTEIRA (todos os tenants daquele run, em paralelo) -- não confundir "
-                "com o tempo de cada tenant individualmente, na seção abaixo.")
-        if duracoes.empty:
-            ui.nota("Nenhuma execução com duração registrada ainda.")
-        else:
-            # Uma linha por run, em minutos
-            runs = pd.DataFrame({"data_hora_utc": duracoes.index, "duracao_min": duracoes.values})
-            duracao_por_dia = regras.agregar_por_dia(runs, "data_hora_utc", "duracao_min", "mean",
-                                                     preencher_dias_vazios=True)
-            grafico_barras_por_dia(duracao_por_dia, "Duração média (min)", formato=".1f",
-                                   detalhe_registros="Execuções no dia")
-            ui.nota("Duração média das execuções de cada dia (UTC).")
+        # -------------------------------------------------------------------- Tempo
+        with aba_tempo:
+            ui.secao("Tempo de execução por run")
+            ui.nota("Duração da execução INTEIRA (todos os tenants daquele run, em paralelo) -- não confundir "
+                    "com o tempo de cada tenant individualmente, mais abaixo.")
+            if duracoes.empty:
+                ui.nota("Nenhuma execução com duração registrada ainda.")
+            else:
+                ui.cartoes_metricas([
+                    ("Mais rápida", f"{duracoes.min():.1f} min", None, tema.ACENTO_TEMPO),
+                    ("Mais lenta", f"{duracoes.max():.1f} min", None, tema.ACENTO_CORRECOES),
+                    ("Média", media_min, None, tema.ACENTO_EXECUCOES),
+                ])
+                # Uma linha por run, em minutos
+                runs = pd.DataFrame({"data_hora_utc": duracoes.index, "duracao_min": duracoes.values})
+                duracao_por_dia = regras.agregar_por_dia(runs, "data_hora_utc", "duracao_min", "mean",
+                                                         preencher_dias_vazios=True)
+                st.altair_chart(graficos.barras_por_dia(duracao_por_dia, "Duração média (min)", tema.ACENTO_TEMPO,
+                                                        formato=".1f", detalhe_registros="Execuções no dia"),
+                                width="stretch", theme=None)
+                ui.nota("Duração média das execuções de cada dia (UTC).")
 
-        ui.secao("Tempo de execução por tenant")
-        ui.nota("Média de quanto tempo CADA tenant levou sozinho (login incluso), entre as execuções "
-                "registradas -- ajuda a achar quais tenants são os mais lentos.")
-        duracao_por_tenant = dados_correcoes.duracao_media_por_tenant(resumo)
-        if not duracao_por_tenant:
-            ui.nota("Nenhuma execução com duração por tenant registrada ainda.")
-        else:
-            serie_duracao_tenant = pd.Series(duracao_por_tenant, name="duração média (min)").sort_values(ascending=False)
-            st.bar_chart(serie_duracao_tenant, color=tema.ROXO)
+            ui.secao("Tempo de execução por tenant")
+            ui.nota("Média de quanto tempo CADA tenant levou sozinho (login incluso), entre as execuções "
+                    "registradas -- ajuda a achar quais tenants são os mais lentos.")
+            duracao_por_tenant = dados_correcoes.duracao_media_por_tenant(resumo)
+            if not duracao_por_tenant:
+                ui.nota("Nenhuma execução com duração por tenant registrada ainda.")
+            else:
+                st.altair_chart(graficos.barras_horizontais(pd.Series(duracao_por_tenant), "Duração média (min)",
+                                                            cor=tema.ACENTO_TEMPO, formato=".1f"),
+                                width="stretch", theme=None)
 
-        ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
-        try:
-            cobertura = carregar_cobertura_credenciais_cacheada(credenciais_json)
-        except dados_correcoes.ErroFonteDados as e:
-            cobertura = None
-            ui.nota(f"Não foi possível carregar a cobertura de credenciais agora: {e}")
-        if cobertura is None:
-            ui.nota("Ainda não publicada -- aparece depois da próxima execução agendada do pipeline.")
-        else:
-            total = cobertura["total_ativos"]
-            com = len(cobertura["com_credencial"])
-            st.metric("Tenants com credencial cadastrada", f"{com} / {total}")
-            if cobertura["sem_credencial"]:
-                with st.expander(f"Ver os {len(cobertura['sem_credencial'])} tenants sem credencial"):
-                    st.write(cobertura["sem_credencial"])
+        # --------------------------------------------------------------- Execuções
+        with aba_exec:
+            ui.secao("Sucesso × falha por tenant")
+            taxas = dados_correcoes.taxa_sucesso_por_tenant(resumo)
+            if not taxas:
+                ui.nota("Sem dados suficientes ainda.")
+            else:
+                df_taxas = pd.DataFrame(taxas).T.sort_values("taxa_sucesso_pct")
+                df_taxas[["sucesso", "falha"]] = df_taxas[["sucesso", "falha"]].astype(int)
+                st.altair_chart(graficos.sucesso_falha_por_tenant(df_taxas), width="stretch", theme=None)
+                ui.nota("Número de execuções de cada cliente, por resultado. Falha = qualquer resultado diferente "
+                        "de sucesso (login, sessão expirada, limite, processamento).")
+                with st.expander("Taxa de sucesso por tenant (tabela)"):
+                    st.dataframe(df_taxas, width="stretch")
+
+        # ------------------------------------------------------------- Credenciais
+        with aba_cred:
+            ui.secao("Cobertura de credenciais (tenants_credenciais.json)")
+            try:
+                cobertura = carregar_cobertura_credenciais_cacheada(credenciais_json)
+                falha_cobertura = None
+            except dados_correcoes.ErroFonteDados as e:
+                cobertura, falha_cobertura = None, e
+            if falha_cobertura is not None:
+                ui.nota(f"Não foi possível carregar a cobertura de credenciais agora: {falha_cobertura}")
+            elif cobertura is None:
+                ui.nota("Ainda não publicada -- aparece depois da próxima execução agendada do pipeline.")
+            else:
+                total = cobertura["total_ativos"]
+                com = len(cobertura["com_credencial"])
+                sem = len(cobertura["sem_credencial"])
+                ui.cartoes_metricas([
+                    ("Com credencial", f"{com} / {total}", f"{com / total:.0%} dos clientes ativos" if total else None,
+                     tema.ACENTO_CREDENCIAIS),
+                    ("Sem credencial", sem, "a automação não consegue atuar nesses clientes" if sem else None,
+                     tema.cor("Erro") if sem else tema.cor("Sucesso")),
+                ])
+                st.altair_chart(graficos.barra_de_cobertura(com, total, tema.ACENTO_CREDENCIAIS),
+                                width="stretch", theme=None)
+                if cobertura["sem_credencial"]:
+                    with st.expander(f"Ver os {sem} tenants sem credencial"):
+                        st.write(cobertura["sem_credencial"])
 
         ui.nota(f"Atualizado em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} -- cache de 5min.")
 
