@@ -84,3 +84,13 @@ def test_caixas_de_explicacao_usam_sempre_o_roxo_da_marca(monkeypatch):
     componentes.intro("b", "#D9531E")                 # a cor pedida é ignorada de propósito
     componentes.explicacao_das_colunas("#0E9AA7")
     assert all(f"--cor:{componentes.tema.ROXO}" in html for html in capturado) and len(capturado) == 3
+
+
+def test_descricao_de_grafico_fica_no_quadro_roxo(monkeypatch):
+    capturado = []
+    monkeypatch.setattr(componentes, "_render", capturado.append)
+    componentes.descricao("a pergunta?", "como ler")
+    componentes.descricao("só a pergunta?")
+    assert all("class='ms-intro ms-menor'" in h and f"--cor:{componentes.tema.ROXO}" in h for h in capturado)
+    assert "<b>Responde:</b> a pergunta?<br><b>Como ler:</b> como ler" in capturado[0]
+    assert "Como ler" not in capturado[1]

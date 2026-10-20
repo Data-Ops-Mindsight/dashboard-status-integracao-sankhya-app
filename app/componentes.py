@@ -60,11 +60,12 @@ def intro(texto, cor=None):
 
 
 def descricao(responde, como_ler=None):
-    """Explicação curta de um gráfico/seção: a pergunta que ele responde e, opcionalmente, como lê-lo."""
+    """Explicação de um gráfico/seção, no mesmo quadro roxo da introdução (fonte menor): a pergunta que ele
+    responde e, opcionalmente, como lê-lo."""
     partes = [f"<b>Responde:</b> {responde}"]
     if como_ler:
         partes.append(f"<b>Como ler:</b> {como_ler}")
-    _render(f"<p class='ms-descricao'>{'<br>'.join(partes)}</p>")
+    _render(f"<div class='ms-intro ms-menor' style='--cor:{tema.ROXO}'>{'<br>'.join(partes)}</div>")
 
 
 def nota(texto):
