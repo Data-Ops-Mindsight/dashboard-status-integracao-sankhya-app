@@ -43,6 +43,8 @@ ACENTO_CREDENCIAIS = "#C2398B"  # magenta
 ACENTO_ERROS = "#D9531E"        # laranja-queimado (não é a cor de status "Pendente com problema")
 
 # Categorias (tipos de erro, etc.): distinguíveis entre si e fora das cores de status
+COR_OUTROS = "#B9B2AB"  # tudo o que não está entre as categorias em destaque
+N_CATEGORIAS_EM_DESTAQUE = 7
 PALETA_CATEGORIAS = ["#7321E8", "#0E9AA7", "#E0508B", "#2F6FDE", "#C98A12", "#5B6B7B", "#9A4D2E", "#8E5BD9"]
 
 # Rampa sequencial (um só matiz, claro -> escuro) para taxa de erro
@@ -110,8 +112,9 @@ CSS = f"""
   border-left: 4px solid var(--cor); border-radius: 10px;
 }}
 .ms-intro.ms-menor {{ font-size: .8rem; line-height: 1.4; padding: 10px 16px; }}
-.ms-intro.ms-menor ul {{ margin: 6px 0 0; padding-left: 18px; }}
-.ms-intro.ms-menor li {{ margin: 2px 0; }}
+.ms-intro.ms-menor ul {{ margin: 6px 0 0; padding-left: 18px; columns: 2; column-gap: 32px; }}
+.ms-intro.ms-menor li {{ margin: 2px 0 6px; break-inside: avoid; }}
+@media (max-width: 900px) {{ .ms-intro.ms-menor ul {{ columns: 1; }} }}
 .ms-descricao {{ color: {TEXTO_SECUNDARIO}; font-size: .85rem; line-height: 1.5; margin: 0 0 10px; }}
 .ms-descricao b {{ color: {GRAFITE}; font-weight: 600; }}
 .ms-info {{ color: {TEXTO_SECUNDARIO}; cursor: help; font-size: .8rem; }}

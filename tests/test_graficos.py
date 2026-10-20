@@ -35,3 +35,14 @@ def test_grafico_de_pct_por_periodo_e_empilhado_mensal_geram_especificacao_valid
     por_tipo = pd.DataFrame({"dia": pd.to_datetime(["2026-10-01"]), "tipo": ["a"], "valor": [3]})
     spec = graficos.barras_por_dia_e_tipo(por_tipo, {"a": "#7321E8"}, "%m/%Y", "Linhas de erro").to_dict()
     assert "Linhas de erro" in str(spec)
+
+
+def test_so_os_tipos_de_maior_volume_ganham_cor_e_o_resto_vira_outros():
+    volume = pd.Series({f"t{i}": 100 - i for i in range(12)})
+    cores, destaque = graficos.cores_em_destaque(volume, n=7)
+    assert destaque == [f"t{i}" for i in range(7)]
+    assert len({cores[t] for t in destaque}) == 7                       # nenhuma cor repetida entre os destacados
+    assert {cores[f"t{i}"] for i in range(7, 12)} == {tema.COR_OUTROS}
+    df = pd.DataFrame({"dia": pd.to_datetime(["2026-10-01"] * 4), "tipo": ["t0", "t8", "t9", "t0"], "valor": [5, 2, 3, 1]})
+    agrupado = graficos.agrupar_em_outros(df, "tipo", destaque)
+    assert {(r.tipo, r.valor) for r in agrupado.itertuples()} == {("t0", 6), (graficos.OUTROS, 5)}

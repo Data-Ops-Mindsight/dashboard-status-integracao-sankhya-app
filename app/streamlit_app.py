@@ -188,10 +188,12 @@ erros_por_sync_todos = regras.erros_por_sync(erros_sync, historico)
 
 ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)
-col_usuario, col_recarregar, col_sair = st.columns([6.4, 1.6, 1], vertical_alignment="center")
 if usuario:
+    col_usuario, col_recarregar, col_sair = st.columns([6.4, 1.6, 1], vertical_alignment="center")
     col_usuario.markdown(f"<div class='ms-usuario'>Conectado como <b>{usuario}</b></div>", unsafe_allow_html=True)
     col_sair.button("Sair", on_click=autenticacao.sair, width="stretch")
+else:
+    _, col_recarregar = st.columns([8.4, 1.6], vertical_alignment="center")
 col_recarregar.button("↻ Recarregar dados", on_click=recarregar, width="stretch",
                       help="Busca os dados mais recentes agora (normalmente atualizam sozinhos a cada 10 min)")
 
@@ -482,7 +484,7 @@ with aba_erros:
                                   format="DD/MM/YYYY")
         clientes_e = f3.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
                                     placeholder="Todos os clientes")
-        g1, g2 = st.columns([4.8, 4])
+        g1, g2, g3 = st.columns([4.2, 3, 2.6], vertical_alignment="bottom")
         tipos_e = g1.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
                                  placeholder="Todos os tipos")
         responsaveis_e = g2.multiselect("Responsável", [r for r in mapeamento.RESPONSAVEIS
@@ -491,7 +493,7 @@ with aba_erros:
         if "granularidade_erros" not in st.session_state:
             # histórico longo: semana por padrão (centenas de barras diárias não se leem)
             st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
-        granularidade = st.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
+        granularidade = g3.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
                                              key="granularidade_erros") or "Dia"
         formato_periodo = {"Dia": "%d/%m", "Semana": "%d/%m", "Mês": "%m/%Y"}[granularidade]
 
@@ -545,16 +547,21 @@ with aba_erros:
         if erros_e.empty:
             st.info("Nenhum erro no período e filtros selecionados.")
         else:
-            todos_tipos = sorted(erros_todos["tipo_erro"].unique())
-            cores_erros = graficos.cores_por_categoria(todos_tipos)
+            volume_tipos = erros_todos.groupby("tipo_erro")["quantidade"].sum()
+            cores_erros, tipos_em_destaque = graficos.cores_em_destaque(volume_tipos)
+            cores_empilhado = {**cores_erros, graficos.OUTROS: tema.COR_OUTROS}
 
             ui.secao(f"Erros por {granularidade.lower()}, por tipo")
             ui.descricao("o volume de erro está subindo ou caindo, e de que tipo é?",
                          "cada barra é um período (dia, semana ou mês, conforme o agrupamento) com o total de linhas "
                          "de erro, dividido por tipo (cada cor um tipo). Passe o mouse para ver os valores.")
             st.altair_chart(graficos.barras_por_dia_e_tipo(
-                regras.erros_por_periodo_e_tipo(erros_e, granularidade), cores_erros, formato_periodo,
+                graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, granularidade), "tipo",
+                                           tipos_em_destaque), cores_empilhado, formato_periodo,
                 "Linhas de erro"), width="stretch", theme=None)
+            if len(volume_tipos) > len(tipos_em_destaque):
+                ui.nota(f"Os {len(tipos_em_destaque)} tipos com mais linhas aparecem em cor; os demais "
+                        f"({len(volume_tipos) - len(tipos_em_destaque)}) ficam juntos em cinza, como \"Outros tipos\".")
 
             ui.secao(f"Erros por {granularidade.lower()}, por responsável")
             ui.descricao("quem precisa agir para reduzir o erro?",
@@ -565,7 +572,7 @@ with aba_erros:
                                  mapeamento.A_DEFINIR: "#8A8580"}
             por_resp = regras.erros_por_periodo_e_tipo(erros_e.assign(tipo_erro=erros_e["responsavel"]), granularidade)
             st.altair_chart(graficos.barras_por_dia_e_tipo(por_resp, cores_responsavel, formato_periodo,
-                                                           "Linhas de erro"), width="stretch", theme=None)
+                                                           "Linhas de erro", "Responsável"), width="stretch", theme=None)
 
             ui.secao("% de erro por período")
             ui.descricao("a proporção de erro melhorou, independente do volume processado?",

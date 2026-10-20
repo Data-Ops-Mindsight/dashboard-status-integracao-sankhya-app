@@ -15,6 +15,26 @@ def cores_por_categoria(categorias):
     return {c: paleta[i % len(paleta)] for i, c in enumerate(ordenadas)}
 
 
+OUTROS = "Outros tipos"
+
+
+def cores_em_destaque(volume, n=None):
+    """Cores para muitas categorias sem repetir: só as `n` de maior volume (Series categoria -> volume) recebem
+    cor da paleta; as demais ficam cinza. Devolve ({categoria: cor}, [categorias em destaque])."""
+    n = tema.N_CATEGORIAS_EM_DESTAQUE if n is None else n
+    ordenadas = volume.sort_values(ascending=False, kind="stable")
+    destaque = list(ordenadas.index[:n])
+    cores = {c: (tema.PALETA_CATEGORIAS[destaque.index(c)] if c in destaque else tema.COR_OUTROS) for c in ordenadas.index}
+    return cores, destaque
+
+
+def agrupar_em_outros(df, coluna, destaque, rotulo=OUTROS):
+    """Troca as categorias fora de `destaque` por `rotulo` e soma `valor` (df: ..., coluna, valor)."""
+    df = df.assign(**{coluna: df[coluna].where(df[coluna].isin(destaque), rotulo)})
+    chaves = [c for c in df.columns if c != "valor"]
+    return df.groupby(chaves, as_index=False)["valor"].sum()
+
+
 def _eixo_dia(df, formato_curto="%d/%m"):
     formato = "%d/%m/%y" if formato_curto == "%d/%m" and df["dia"].nunique() > 300 else formato_curto
     return df.assign(dia_rotulo=df["dia"].dt.strftime(formato))
@@ -40,7 +60,7 @@ def barras_por_dia(df_dia, titulo_valor, cor, formato=",.0f", detalhe_registros=
     return tema.configurar_grafico(grafico)
 
 
-def barras_por_dia_e_tipo(df_dia_tipo, cores, formato="%d/%m", titulo_valor="Correções"):
+def barras_por_dia_e_tipo(df_dia_tipo, cores, formato="%d/%m", titulo_valor="Correções", titulo_legenda="Tipo de erro"):
     """Barras empilhadas por período (dia, semana ou mês), uma cor por tipo (`cores`: {tipo: cor})."""
     df_dia_tipo = _eixo_dia(df_dia_tipo, formato)
     dias = df_dia_tipo.sort_values("dia")["dia_rotulo"].drop_duplicates().tolist()
@@ -49,9 +69,9 @@ def barras_por_dia_e_tipo(df_dia_tipo, cores, formato="%d/%m", titulo_valor="Cor
         x=alt.X("dia_rotulo:N", title=None, sort=dias, scale=alt.Scale(domain=dias),
                 axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
         y=alt.Y("valor:Q", title=titulo_valor, axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
-        color=alt.Color("tipo:N", title="Tipo de erro",
+        color=alt.Color("tipo:N", title=None,
                         scale=alt.Scale(domain=tipos, range=[cores[t] for t in tipos])),
-        tooltip=[alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"), alt.Tooltip("tipo:N", title="Tipo de erro"),
+        tooltip=[alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"), alt.Tooltip("tipo:N", title=titulo_legenda),
                  alt.Tooltip("valor:Q", title=titulo_valor, format=",.0f")],
     ).properties(height=260)
     return tema.configurar_grafico(grafico)
