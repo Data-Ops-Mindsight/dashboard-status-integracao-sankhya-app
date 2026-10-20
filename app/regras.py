@@ -287,3 +287,27 @@ def erros_por_cliente(erros, historico):
                 por_responsavel[responsavel] if responsavel in por_responsavel else {}).fillna(0).astype("int64")
             colunas.append(f"linhas_{responsavel.lower()}")
     return (resultado[colunas].sort_values(["linhas", "tenant"], ascending=[False, True]).reset_index(drop=True))
+
+
+def resolucao_do_cliente(correcoes, erros_cliente, inicio, fim):
+    """Quanto da automação resolveu dos erros de UM cliente no período [inicio, fim] (datas UTC).
+
+    `correcoes`: DataFrame do cliente (data_hora_utc, tipo_erro, quantidade), só execuções aplicadas.
+    `erros_cliente`: linhas de erro do cliente (tipo_erro, quantidade, created), de `erros_por_sync`.
+    Retorna {"corrigidos", "total", "por_tipo"}; `por_tipo` tem tipo, corrigidos e erros (linhas de erro)."""
+    if correcoes is not None and len(correcoes):
+        dia = pd.to_datetime(correcoes["data_hora_utc"], errors="coerce", utc=True).dt.tz_localize(None).dt.normalize()
+        no_periodo = correcoes.loc[(dia >= pd.Timestamp(inicio)) & (dia <= pd.Timestamp(fim))]
+        corrigidos = pd.to_numeric(no_periodo["quantidade"], errors="coerce").groupby(no_periodo["tipo_erro"]).sum()
+    else:
+        corrigidos = pd.Series(dtype="float64")
+    if len(erros_cliente):
+        dia_erro = erros_cliente["created"].dt.tz_localize(None).dt.normalize()
+        erros = erros_cliente.loc[(dia_erro >= pd.Timestamp(inicio)) & (dia_erro <= pd.Timestamp(fim))]
+        linhas = erros.groupby("tipo_erro")["quantidade"].sum()
+    else:
+        linhas = pd.Series(dtype="int64")
+    por_tipo = (pd.concat([corrigidos.rename("corrigidos"), linhas.rename("erros")], axis=1).fillna(0).astype("int64")
+                .rename_axis("tipo").reset_index())
+    por_tipo = por_tipo.sort_values(["erros", "corrigidos", "tipo"], ascending=[False, False, True]).reset_index(drop=True)
+    return {"corrigidos": int(por_tipo["corrigidos"].sum()), "total": int(por_tipo["erros"].sum()), "por_tipo": por_tipo}

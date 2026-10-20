@@ -236,6 +236,12 @@ def taxa_sucesso_por_tenant(resumo: Iterable[dict]) -> dict[str, dict]:
     return resultado
 
 
+def somente_aplicadas(linhas: Iterable[dict]) -> list[dict]:
+    """Descarta as linhas de execuções de teste (`modo` = dry_run): só o que foi de fato aplicado conta.
+    Linhas sem a coluna `modo` (anteriores a ela) são tratadas como aplicadas."""
+    return [l for l in linhas if str(l.get("modo") or "aplicar").strip() == "aplicar"]
+
+
 def numero(valor):
     """float de um valor da planilha, aceitando vírgula decimal ("11,7", locale pt-BR); None se vazio/inválido."""
     if valor in (None, ""):

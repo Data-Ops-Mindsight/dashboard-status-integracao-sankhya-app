@@ -178,6 +178,14 @@ df_atual = regras.so_quando_ultimo_sync_com_erro(
                 "geometria_conflito"]
 )
 
+# Correções da automação (planilha da triagem): só enriquece o detalhe do cliente; sem credencial ou com falha, some
+try:
+    _resumo_auto, _correcoes_auto = carregar_correcoes(credenciais_sheets())
+except dados_correcoes.ErroFonteDados:
+    _correcoes_auto = []
+correcoes_auto = pd.DataFrame(dados_correcoes.somente_aplicadas(_correcoes_auto))
+erros_por_sync_todos = regras.erros_por_sync(erros_sync, historico)
+
 ui.cabecalho(ultima_execucao.tz_convert(dados.FUSO_COLETA), (agora - ultima_execucao) / pd.Timedelta(hours=1),
              atrasada=agora - ultima_execucao > INTERVALO_COLETA * 2)
 col_usuario, col_recarregar, col_sair = st.columns([6.4, 1.6, 1], vertical_alignment="center")
@@ -355,6 +363,14 @@ with sub_detalhe:
               else fim - pd.Timedelta(days=dias_d - 1).to_pytimedelta())
     syncs = syncs_todos.loc[syncs_todos["created"].dt.date >= inicio]
 
+    resolucao = regras.resolucao_do_cliente(
+        correcoes_auto.loc[correcoes_auto["tenant"] == tenant] if len(correcoes_auto) else correcoes_auto,
+        erros_por_sync_todos.loc[erros_por_sync_todos["tenant"] == tenant], inicio, fim)
+    if resolucao["total"] or resolucao["corrigidos"]:
+        pct_resolvido = (f"{resolucao['corrigidos'] / resolucao['total']:.0%} dos erros do período"
+                         if resolucao["total"] else "sem erros no período")
+    else:
+        pct_resolvido = "nenhuma correção no período"
     estado_atual = df_atual.loc[df_atual["tenant"] == tenant, "estado"]
     ultimo_ok = regras.ultimo_sucesso(syncs_todos)
     taxa = regras.taxa_erro(syncs_todos, agora)
@@ -376,7 +392,25 @@ with sub_detalhe:
         ("Syncs no período", len(syncs), f"{inicio:%d/%m} a {fim:%d/%m}", None,
          "Responde: quantos syncs o cliente teve no período filtrado? Cálculo: contagem de syncs criados entre "
          "as datas escolhidas."),
+        ("Corrigidos pela automação", f"{resolucao['corrigidos']} de {resolucao['total']}", pct_resolvido,
+         tema.ACENTO_CORRECOES,
+         "Responde: quanto do erro deste cliente a automação já resolveu? Cálculo: correções aplicadas pela "
+         "triagem no período (planilha de correções, só execuções reais) ÷ linhas de erro do cliente no período "
+         "(coleta de 4h). As duas fontes medem coisas parecidas, não idênticas: o percentual é uma referência."),
     ])
+
+    if len(resolucao["por_tipo"]):
+        ui.secao("Resolvido pela automação, por tipo de erro")
+        ui.descricao("de cada tipo de erro deste cliente, quanto a automação já corrigiu?",
+                     "<b>Corrigidos</b> são as correções aplicadas pela triagem no período; <b>Linhas de erro</b> são "
+                     "os erros registrados nos syncs do período. Tipos que a automação ainda não corrige ficam com zero.")
+        tabela_resolucao = resolucao["por_tipo"].rename(columns={
+            "tipo": "Tipo de erro", "corrigidos": "Corrigidos", "erros": "Linhas de erro"})
+        tabela_resolucao["% resolvido"] = (100 * tabela_resolucao["Corrigidos"] / tabela_resolucao["Linhas de erro"]
+                                           ).where(tabela_resolucao["Linhas de erro"] > 0)
+        st.dataframe(tabela_resolucao, hide_index=True, width="stretch",
+                     column_config={"% resolvido": st.column_config.NumberColumn(format="%.0f%%")})
+
 
     linha_tempo = syncs.assign(
         Status=syncs["status"].map(tema.ROTULOS_STATUS),
@@ -586,6 +620,8 @@ with aba_automacao:
         st.error(f"Não foi possível carregar o relatório do Google Sheets: {e}")
         st.button("Tentar de novo", on_click=recarregar, key="tentar_de_novo_correcoes")
         resumo, correcoes = [], []
+    resumo = dados_correcoes.somente_aplicadas(resumo)
+    correcoes = dados_correcoes.somente_aplicadas(correcoes)
 
     if not resumo:
         st.info("A planilha de relatório ainda não tem nenhuma execução publicada.")

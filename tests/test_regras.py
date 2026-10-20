@@ -301,3 +301,17 @@ def test_erros_por_cliente_separa_as_linhas_por_responsavel():
     c = regras.erros_por_cliente(e, historico).set_index("tenant")
     assert c.loc["a", ["linhas_mindsight", "linhas_cliente"]].tolist() == [10, 5]
     assert c.loc["b", ["linhas_mindsight", "linhas_cliente"]].tolist() == [20, 0]
+
+
+def test_resolucao_do_cliente_cruza_correcoes_e_linhas_de_erro_no_periodo():
+    historico, erros_sync = _base_erros()
+    e = regras.erros_por_sync(erros_sync, historico)
+    e_a = e.loc[e["tenant"] == "a"]                                   # a: x=10 (16/10), y=5 (17/10)
+    correcoes = pd.DataFrame({
+        "data_hora_utc": ["2026-10-17T19:00:00+00:00", "2026-10-17T19:00:00+00:00", "2026-09-01T10:00:00+00:00"],
+        "tipo_erro": ["x", "z", "x"], "quantidade": ["4", "2", "50"]})   # a de 01/09 está fora do período
+    r = regras.resolucao_do_cliente(correcoes, e_a, "2026-10-16", "2026-10-20")
+    assert (r["corrigidos"], r["total"]) == (6, 15)
+    assert {(l.tipo, l.corrigidos, l.erros) for l in r["por_tipo"].itertuples()} == {("x", 4, 10), ("y", 0, 5), ("z", 2, 0)}
+    vazio = regras.resolucao_do_cliente(correcoes.iloc[0:0], e_a.iloc[0:0], "2026-10-16", "2026-10-20")
+    assert (vazio["corrigidos"], vazio["total"]) == (0, 0) and vazio["por_tipo"].empty

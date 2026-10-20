@@ -290,3 +290,8 @@ def test_duracao_media_por_tenant_le_a_coluna_nova_em_minutos():
     resumo = [{"tenant": "a", "duracao_tenant_min": "1,9"}, {"tenant": "a", "duracao_tenant_min": "2,1"},
               {"tenant": "b", "duracao_tenant_min": ""}]
     assert dados_correcoes.duracao_media_por_tenant(resumo) == {"a": 2.0}
+
+
+def test_somente_aplicadas_descarta_dry_run_e_mantem_linhas_sem_modo():
+    linhas = [{"modo": "aplicar", "n": 1}, {"modo": "dry_run", "n": 2}, {"n": 3}, {"modo": "", "n": 4}]
+    assert [l["n"] for l in dados_correcoes.somente_aplicadas(linhas)] == [1, 3, 4]
