@@ -220,16 +220,18 @@ def erro_predominante_do_ultimo_sync(erros_sync, ids_ultimo_sync):
 # Aba "Erros": linhas de erro por período, tipo e cliente
 # =============================================================================
 
-GRANULARIDADES = ("Dia", "Semana", "Mês")
+GRANULARIDADES = ("Dia", "Semana", "Mês", "Ano")
 
 
 def _inicio_do_periodo(datas, granularidade):
-    """Data (sem fuso) do início do dia/semana (segunda)/mês de cada data UTC."""
+    """Data (sem fuso) do início do dia/semana (segunda)/mês/ano de cada data UTC."""
     dia = datas.dt.tz_localize(None).dt.normalize()
     if granularidade == "Semana":
         return dia - pd.to_timedelta(dia.dt.dayofweek, unit="D")
     if granularidade == "Mês":
         return dia.dt.to_period("M").dt.to_timestamp()
+    if granularidade == "Ano":
+        return dia.dt.to_period("Y").dt.to_timestamp()
     return dia
 
 

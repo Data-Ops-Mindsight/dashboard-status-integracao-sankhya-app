@@ -455,7 +455,7 @@ with sub_detalhe:
 with aba_erros:
     ui.intro("<b>Quanto erro as integrações geram, de que tipo e em quais clientes?</b> Cada \"linha de erro\" é um "
              "registro (colaborador, vínculo, etc.) que falhou em um sync. Use os filtros para acompanhar a evolução "
-             "por dia, semana ou mês, ver quais tipos de erro mais pesam e em que clientes eles se concentram.",
+             "por dia, semana, mês ou ano, ver quais tipos de erro mais pesam e em que clientes eles se concentram.",
              tema.ACENTO_ERROS)
 
     erros_todos = regras.erros_por_sync(erros_sync, historico)
@@ -468,34 +468,26 @@ with aba_erros:
         e_min = com_registros["created"].min().date()
         e_max = agora.date()
 
-        def aplicar_atalho_erros():
-            dias = ATALHOS_PERIODO.get(st.session_state.get("atalho_periodo_erros"))
-            inicio_e = e_min if dias is None else max(e_min, e_max - pd.Timedelta(days=dias - 1).to_pytimedelta())
-            st.session_state["periodo_erros"] = (inicio_e, e_max)
-
         if "periodo_erros" not in st.session_state:
-            st.session_state["atalho_periodo_erros"] = "Tudo"
-            aplicar_atalho_erros()
+            st.session_state["periodo_erros"] = (e_min, e_max)
+        if "granularidade_erros" not in st.session_state:
+            # histórico longo: semana por padrão (centenas de barras diárias não se leem)
+            st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
 
-        f1, f2, f3 = st.columns([2, 2, 4.8], vertical_alignment="bottom")
-        f1.segmented_control("Período", list(ATALHOS_PERIODO), key="atalho_periodo_erros",
-                             on_change=aplicar_atalho_erros)
-        periodo_e = f2.date_input("Intervalo", key="periodo_erros", min_value=e_min, max_value=e_max,
+        f1, f2, f3 = st.columns([2.4, 4, 3.4], vertical_alignment="bottom")
+        periodo_e = f1.date_input("Intervalo", key="periodo_erros", min_value=e_min, max_value=e_max,
                                   format="DD/MM/YYYY")
-        clientes_e = f3.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
+        clientes_e = f2.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
                                     placeholder="Todos os clientes")
-        g1, g2, g3 = st.columns([4.2, 3, 2.6], vertical_alignment="bottom")
+        granularidade = f3.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
+                                             key="granularidade_erros") or "Dia"
+        g1, g2 = st.columns([4.2, 3], vertical_alignment="bottom")
         tipos_e = g1.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
                                  placeholder="Todos os tipos")
         responsaveis_e = g2.multiselect("Responsável", [r for r in mapeamento.RESPONSAVEIS
                                                         if r in set(erros_todos["responsavel"])],
                                         key="responsaveis_erros", placeholder="Todos")
-        if "granularidade_erros" not in st.session_state:
-            # histórico longo: semana por padrão (centenas de barras diárias não se leem)
-            st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
-        granularidade = g3.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
-                                             key="granularidade_erros") or "Dia"
-        formato_periodo = {"Dia": "%d/%m", "Semana": "%d/%m", "Mês": "%m/%Y"}[granularidade]
+        formato_periodo = {"Dia": "%d/%m", "Semana": "%d/%m", "Mês": "%m/%Y", "Ano": "%Y"}[granularidade]
 
         ini_e, fim_e = (periodo_e if len(periodo_e) == 2 else (periodo_e[0], e_max))
         dia_hist = historico["created"].dt.tz_localize(None).dt.normalize()
@@ -556,7 +548,7 @@ with aba_erros:
             with sub_evol:
                 ui.secao(f"Erros por {granularidade.lower()}, por tipo")
                 ui.descricao("o volume de erro está subindo ou caindo, e de que tipo é?",
-                             "cada barra é um período (dia, semana ou mês, conforme o agrupamento) com o total de linhas "
+                             "cada barra é um período (dia, semana, mês ou ano, conforme o agrupamento) com o total de linhas "
                              "de erro, dividido por tipo (cada cor um tipo). Passe o mouse para ver os valores.")
                 st.altair_chart(graficos.barras_por_dia_e_tipo(
                     graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, granularidade), "tipo",

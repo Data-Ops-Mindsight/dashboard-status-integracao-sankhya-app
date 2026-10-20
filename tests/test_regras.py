@@ -315,3 +315,19 @@ def test_resolucao_do_cliente_cruza_correcoes_e_linhas_de_erro_no_periodo():
     assert {(l.tipo, l.corrigidos, l.erros) for l in r["por_tipo"].itertuples()} == {("x", 4, 10), ("y", 0, 5), ("z", 2, 0)}
     vazio = regras.resolucao_do_cliente(correcoes.iloc[0:0], e_a.iloc[0:0], "2026-10-16", "2026-10-20")
     assert (vazio["corrigidos"], vazio["total"]) == (0, 0) and vazio["por_tipo"].empty
+
+
+def test_erros_agrupados_por_ano():
+    historico = pd.DataFrame({
+        "tenant": ["a", "a", "a"], "id_sync": [1, 2, 3],
+        "created": pd.to_datetime(["2025-12-31T10:00:00Z", "2026-01-01T10:00:00Z", "2026-10-20T10:00:00Z"], utc=True),
+        "number_of_data_items": [100.0, 100.0, 100.0],
+    })
+    erros_sync = pd.DataFrame({"tenant": ["a"] * 3, "id_sync": [1, 2, 3], "tipo_erro": ["x"] * 3,
+                               "quantidade": [1, 2, 3], "coletado_em": pd.to_datetime(["2026-10-20"] * 3, utc=True)})
+    e = regras.erros_por_sync(erros_sync, historico)
+    por_ano = regras.erros_e_registros_por_periodo(e, historico, "Ano")
+    assert [d.year for d in por_ano["dia"]] == [2025, 2026]
+    assert por_ano["erros"].tolist() == [1, 5] and por_ano["registros"].tolist() == [100.0, 200.0]
+    assert "Ano" in regras.GRANULARIDADES
+    assert regras.erros_por_periodo_e_tipo(e, "Ano")["valor"].tolist() == [1, 5]
