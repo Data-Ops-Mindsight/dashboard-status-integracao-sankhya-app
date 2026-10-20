@@ -40,6 +40,7 @@ ACENTO_CORRECOES = ROXO
 ACENTO_TEMPO = "#0E9AA7"        # azul-petróleo
 ACENTO_EXECUCOES = "#2F6FDE"    # azul
 ACENTO_CREDENCIAIS = "#C2398B"  # magenta
+ACENTO_ERROS = "#D9531E"        # laranja-queimado (não é a cor de status "Pendente com problema")
 
 # Categorias (tipos de erro, etc.): distinguíveis entre si e fora das cores de status
 PALETA_CATEGORIAS = ["#7321E8", "#0E9AA7", "#E0508B", "#2F6FDE", "#C98A12", "#5B6B7B", "#9A4D2E", "#8E5BD9"]

@@ -26,3 +26,12 @@ def test_graficos_geram_especificacao_valida():
     taxas = pd.DataFrame({"sucesso": [2, 1], "falha": [0, 1]}, index=["x", "y"])
     graficos.sucesso_falha_por_tenant(taxas).to_dict()
     graficos.barra_de_cobertura(3, 5, tema.ACENTO_CREDENCIAIS).to_dict()
+
+
+def test_grafico_de_pct_por_periodo_e_empilhado_mensal_geram_especificacao_valida():
+    df = pd.DataFrame({"dia": pd.to_datetime(["2026-10-01", "2026-11-01"]), "registros": [100.0, 0.0],
+                       "erros": [5, 0], "pct": [5.0, float("nan")]})
+    graficos.linha_pct_por_periodo(df, tema.ACENTO_ERROS, "%m/%Y").to_dict()
+    por_tipo = pd.DataFrame({"dia": pd.to_datetime(["2026-10-01"]), "tipo": ["a"], "valor": [3]})
+    spec = graficos.barras_por_dia_e_tipo(por_tipo, {"a": "#7321E8"}, "%m/%Y", "Linhas de erro").to_dict()
+    assert "Linhas de erro" in str(spec)

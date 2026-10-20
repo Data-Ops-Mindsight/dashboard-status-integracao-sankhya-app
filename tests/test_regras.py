@@ -245,3 +245,50 @@ def test_agregar_por_dia_e_tipo_preenche_dias_e_tipos_ausentes_com_zero():
     assert valores[("18/10", "cpf_invalido")] == 4
     assert r["valor"].sum() == 9
     assert regras.agregar_por_dia_e_tipo(df.iloc[0:0], "data_hora_utc", "tipo_erro", "quantidade").empty
+
+
+def _base_erros():
+    historico = pd.DataFrame({
+        "tenant": ["a", "a", "b", "b"],
+        "id_sync": [1, 2, 3, 4],
+        "created": pd.to_datetime(["2026-10-16T10:00:00Z", "2026-10-17T10:00:00Z",
+                                   "2026-10-17T11:00:00Z", "2026-11-02T09:00:00Z"], utc=True),
+        "number_of_data_items": [100.0, 100.0, 200.0, float("nan")],
+    })
+    erros_sync = pd.DataFrame({
+        "tenant": ["a", "a", "b", "b", "z"], "id_sync": [1, 2, 3, 4, 9],
+        "tipo_erro": ["x", "y", "x", "x", "x"], "quantidade": [10, 5, 20, 0, 7],
+        "coletado_em": pd.to_datetime(["2026-10-20"] * 5, utc=True),
+    })
+    return historico, erros_sync
+
+
+def test_erros_por_sync_junta_data_ignora_zero_e_sync_fora_do_historico():
+    historico, erros_sync = _base_erros()
+    e = regras.erros_por_sync(erros_sync, historico)
+    assert sorted(zip(e["tenant"], e["id_sync"], e["quantidade"])) == [("a", 1, 10), ("a", 2, 5), ("b", 3, 20)]
+    assert regras.erros_por_sync(erros_sync.iloc[0:0], historico).empty
+
+
+def test_erros_e_registros_por_periodo_calcula_pct_e_aceita_semana_e_mes():
+    historico, erros_sync = _base_erros()
+    e = regras.erros_por_sync(erros_sync, historico)
+    dia = regras.erros_e_registros_por_periodo(e, historico, "Dia")
+    por_dia = {d.strftime("%d/%m"): (r, n, p) for d, r, n, p in zip(dia["dia"], dia["registros"], dia["erros"], dia["pct"])}
+    assert por_dia["16/10"] == (100.0, 10, 10.0)
+    assert por_dia["17/10"] == (300.0, 25, 25 / 3)                      # 100 + 200 registros; 5 + 20 erros
+    assert por_dia["02/11"][0] == 0 and pd.isna(por_dia["02/11"][2])    # sem registros: sem % (não divide por zero)
+    mes = regras.erros_e_registros_por_periodo(e, historico, "Mês")
+    assert [d.strftime("%m/%Y") for d in mes["dia"]] == ["10/2026", "11/2026"] and mes["erros"].tolist() == [35, 0]
+    semana = regras.erros_por_periodo_e_tipo(e, "Semana")
+    assert all(d.dayofweek == 0 for d in semana["dia"])                  # semanas começam na segunda
+    assert semana.groupby("tipo")["valor"].sum().to_dict() == {"x": 30, "y": 5}
+
+
+def test_erros_por_cliente_ordena_por_linhas_e_calcula_pct():
+    historico, erros_sync = _base_erros()
+    e = regras.erros_por_sync(erros_sync, historico)
+    c = regras.erros_por_cliente(e, historico)
+    assert c["tenant"].tolist() == ["b", "a"] and c["linhas"].tolist() == [20, 15]
+    assert c["syncs_com_erro"].tolist() == [1, 2] and c["pct"].round(2).tolist() == [10.0, 7.5]
+    assert regras.erros_por_cliente(e.iloc[0:0], historico).empty

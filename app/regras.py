@@ -214,3 +214,69 @@ def erro_predominante_do_ultimo_sync(erros_sync, ids_ultimo_sync):
         }
     return resultado
 
+
+
+# =============================================================================
+# Aba "Erros": linhas de erro por período, tipo e cliente
+# =============================================================================
+
+GRANULARIDADES = ("Dia", "Semana", "Mês")
+
+
+def _inicio_do_periodo(datas, granularidade):
+    """Data (sem fuso) do início do dia/semana (segunda)/mês de cada data UTC."""
+    dia = datas.dt.tz_localize(None).dt.normalize()
+    if granularidade == "Semana":
+        return dia - pd.to_timedelta(dia.dt.dayofweek, unit="D")
+    if granularidade == "Mês":
+        return dia.dt.to_period("M").dt.to_timestamp()
+    return dia
+
+
+def erros_por_sync(erros_sync, historico):
+    """Linhas de erro (tenant, id_sync, tipo_erro, quantidade) com o dia (UTC) e o `created` do sync.
+
+    Só entram contagens de syncs que estão no histórico; quantidade zero é descartada."""
+    colunas = ["tenant", "id_sync", "tipo_erro", "quantidade", "created"]
+    if erros_sync.empty or historico.empty:
+        return pd.DataFrame(columns=colunas)
+    syncs = historico[["tenant", "id_sync", "created"]]
+    return erros_sync.loc[erros_sync["quantidade"] > 0, ["tenant", "id_sync", "tipo_erro", "quantidade"]].merge(
+        syncs, on=["tenant", "id_sync"], how="inner")[colunas]
+
+
+def erros_por_periodo_e_tipo(erros, granularidade="Dia"):
+    """Soma de linhas de erro por período e tipo: colunas `dia` (início do período), `tipo` e `valor`."""
+    if erros.empty:
+        return pd.DataFrame(columns=["dia", "tipo", "valor"])
+    base = pd.DataFrame({"dia": _inicio_do_periodo(erros["created"], granularidade),
+                         "tipo": erros["tipo_erro"], "valor": erros["quantidade"]})
+    return base.groupby(["dia", "tipo"], as_index=False)["valor"].sum()
+
+
+def erros_e_registros_por_periodo(erros, historico, granularidade="Dia"):
+    """Por período: `registros` (soma de number_of_data_items dos syncs), `erros` (linhas de erro) e `pct`
+    (erros ÷ registros, em %; vazio quando não há registros). Períodos sem sync não aparecem."""
+    if historico.empty:
+        return pd.DataFrame(columns=["dia", "registros", "erros", "pct"])
+    registros = (historico.assign(dia=_inicio_do_periodo(historico["created"], granularidade))
+                 .groupby("dia")["number_of_data_items"].sum(min_count=1).fillna(0).rename("registros"))
+    linhas = (erros.assign(dia=_inicio_do_periodo(erros["created"], granularidade)).groupby("dia")["quantidade"].sum()
+              if not erros.empty else pd.Series(dtype="int64")).rename("erros")
+    resultado = pd.concat([registros, linhas], axis=1).fillna(0).reset_index()
+    resultado["erros"] = resultado["erros"].astype("int64")
+    resultado["pct"] = (100 * resultado["erros"] / resultado["registros"]).where(resultado["registros"] > 0)
+    return resultado.sort_values("dia").reset_index(drop=True)
+
+
+def erros_por_cliente(erros, historico):
+    """Por cliente: `registros`, `linhas` de erro, `pct` e `syncs_com_erro`; do cliente com mais erros ao menor."""
+    registros = historico.groupby("tenant")["number_of_data_items"].sum(min_count=1).fillna(0).rename("registros")
+    if erros.empty:
+        return pd.DataFrame(columns=["tenant", "registros", "linhas", "pct", "syncs_com_erro"])
+    agrupado = erros.groupby("tenant").agg(
+        linhas=("quantidade", "sum"), syncs_com_erro=("id_sync", "nunique"))
+    resultado = agrupado.join(registros, how="left").fillna({"registros": 0}).reset_index()
+    resultado["pct"] = (100 * resultado["linhas"] / resultado["registros"]).where(resultado["registros"] > 0)
+    return (resultado[["tenant", "registros", "linhas", "pct", "syncs_com_erro"]]
+            .sort_values(["linhas", "tenant"], ascending=[False, True]).reset_index(drop=True))

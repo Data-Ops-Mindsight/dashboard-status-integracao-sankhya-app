@@ -16,7 +16,7 @@ def cores_por_categoria(categorias):
 
 
 def _eixo_dia(df, formato_curto="%d/%m"):
-    formato = "%d/%m/%y" if df["dia"].nunique() > 300 else formato_curto
+    formato = "%d/%m/%y" if formato_curto == "%d/%m" and df["dia"].nunique() > 300 else formato_curto
     return df.assign(dia_rotulo=df["dia"].dt.strftime(formato))
 
 
@@ -40,21 +40,38 @@ def barras_por_dia(df_dia, titulo_valor, cor, formato=",.0f", detalhe_registros=
     return tema.configurar_grafico(grafico)
 
 
-def barras_por_dia_e_tipo(df_dia_tipo, cores):
-    """Barras empilhadas por dia, uma cor por tipo (`cores`: {tipo: cor})."""
-    df_dia_tipo = _eixo_dia(df_dia_tipo)
+def barras_por_dia_e_tipo(df_dia_tipo, cores, formato="%d/%m", titulo_valor="Correções"):
+    """Barras empilhadas por período (dia, semana ou mês), uma cor por tipo (`cores`: {tipo: cor})."""
+    df_dia_tipo = _eixo_dia(df_dia_tipo, formato)
     dias = df_dia_tipo.sort_values("dia")["dia_rotulo"].drop_duplicates().tolist()
     tipos = sorted(df_dia_tipo["tipo"].unique())
     grafico = alt.Chart(df_dia_tipo).mark_bar(size=56 if len(dias) < 10 else alt.Undefined).encode(
         x=alt.X("dia_rotulo:N", title=None, sort=dias, scale=alt.Scale(domain=dias),
                 axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
-        y=alt.Y("valor:Q", title="Correções", axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
+        y=alt.Y("valor:Q", title=titulo_valor, axis=alt.Axis(tickCount=4, domain=False, ticks=False)),
         color=alt.Color("tipo:N", title="Tipo de erro",
                         scale=alt.Scale(domain=tipos, range=[cores[t] for t in tipos])),
         tooltip=[alt.Tooltip("dia:T", title="Dia", format="%d/%m/%Y"), alt.Tooltip("tipo:N", title="Tipo de erro"),
-                 alt.Tooltip("valor:Q", title="Correções", format=",.0f")],
+                 alt.Tooltip("valor:Q", title=titulo_valor, format=",.0f")],
     ).properties(height=260)
     return tema.configurar_grafico(grafico)
+
+
+def linha_pct_por_periodo(df, cor, formato="%d/%m"):
+    """Linha do % de erro por período. `df`: dia, registros, erros, pct (períodos sem registros ficam sem ponto)."""
+    df = _eixo_dia(df, formato)
+    periodos = df["dia_rotulo"].tolist()
+    base = alt.Chart(df).encode(
+        x=alt.X("dia_rotulo:N", title=None, sort=periodos, scale=alt.Scale(domain=periodos),
+                axis=alt.Axis(labelAngle=0, labelOverlap=True, ticks=False)),
+        y=alt.Y("pct:Q", title="% de erro", axis=alt.Axis(tickCount=4, domain=False, ticks=False, format=".1f")),
+        tooltip=[alt.Tooltip("dia:T", title="Período", format="%d/%m/%Y"),
+                 alt.Tooltip("pct:Q", title="% de erro", format=".2f"),
+                 alt.Tooltip("erros:Q", title="Linhas de erro", format=",.0f"),
+                 alt.Tooltip("registros:Q", title="Registros", format=",.0f")],
+    )
+    linha = base.mark_line(color=cor, strokeWidth=2.5, point=alt.OverlayMarkDef(color=cor, size=70, filled=True))
+    return tema.configurar_grafico(linha.properties(height=220))
 
 
 def barras_horizontais(serie, titulo_valor, cor=None, cores=None, formato=",.0f"):

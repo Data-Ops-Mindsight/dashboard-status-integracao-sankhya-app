@@ -26,7 +26,7 @@ ARQUIVO_ERROS_SYNC = "erros_sync.csv"
 URL_CONTEUDO = "https://api.github.com/repos/{repo}/contents/{caminho}"
 TIMEOUT = 30
 
-COLUNAS_NUMERICAS = ["number_of_affected_items", "request_time", "total_time"]
+COLUNAS_NUMERICAS = ["number_of_affected_items", "number_of_data_items", "request_time", "total_time"]
 
 
 class ErroFonteDados(Exception):
@@ -98,7 +98,8 @@ def carregar_historico(fonte=None):
     for coluna in ("created", "modified", "primeira_coleta_em", "ultima_coleta_em"):
         df[coluna] = _para_data_hora(df[coluna])
     for coluna in COLUNAS_NUMERICAS:
-        df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
+        # number_of_data_items só existe nos CSVs gerados depois de a coleta passar a guardá-lo
+        df[coluna] = pd.to_numeric(df[coluna], errors="coerce") if coluna in df.columns else float("nan")
     # Dia do sync pelo horário do sistema (UTC), independente de como o CSV gravou a data
     df["data_sync"] = df["created"].dt.strftime("%Y-%m-%d")
     return df

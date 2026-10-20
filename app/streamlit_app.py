@@ -185,7 +185,7 @@ if usuario:
 col_recarregar.button("↻ Recarregar dados", on_click=recarregar, width="stretch",
                       help="Busca os dados mais recentes agora (normalmente atualizam sozinhos a cada 10 min)")
 
-aba_atual, aba_historico, aba_automacao = st.tabs(["Status atual", "Histórico", "Automação"])
+aba_atual, aba_historico, aba_erros, aba_automacao = st.tabs(["Status atual", "Histórico", "Erros", "Automação"])
 
 # =============================================================================
 # Aba 1 — Status atual
@@ -399,7 +399,137 @@ with aba_historico:
     )
 
 # =============================================================================
-# Aba 3 — Correções aplicadas (indicadores da triagem/automação de
+# Aba 3 — Erros (linhas de erro por período, tipo e cliente)
+# =============================================================================
+
+with aba_erros:
+    ui.intro("<b>Quanto erro as integrações geram, de que tipo e em quais clientes?</b> Cada \"linha de erro\" é um "
+             "registro (colaborador, vínculo, etc.) que falhou em um sync. Use os filtros para acompanhar a evolução "
+             "por dia, semana ou mês, ver quais tipos de erro mais pesam e em que clientes eles se concentram.",
+             tema.ACENTO_ERROS)
+
+    erros_todos = regras.erros_por_sync(erros_sync, historico)
+    com_registros = historico.loc[historico["number_of_data_items"].notna()]
+    if erros_todos.empty or com_registros.empty:
+        st.info("Ainda não há erros detalhados coletados. Eles aparecem a cada coleta (a cada 4 horas).")
+    else:
+        e_min = com_registros["created"].min().date()
+        e_max = agora.date()
+
+        def aplicar_atalho_erros():
+            dias = ATALHOS_PERIODO.get(st.session_state.get("atalho_periodo_erros"))
+            inicio_e = e_min if dias is None else max(e_min, e_max - pd.Timedelta(days=dias - 1).to_pytimedelta())
+            st.session_state["periodo_erros"] = (inicio_e, e_max)
+
+        if "periodo_erros" not in st.session_state:
+            st.session_state["atalho_periodo_erros"] = "Tudo"
+            aplicar_atalho_erros()
+
+        f1, f2, f3, f4 = st.columns([2, 2, 2.4, 2.4], vertical_alignment="bottom")
+        f1.segmented_control("Período", list(ATALHOS_PERIODO), key="atalho_periodo_erros",
+                             on_change=aplicar_atalho_erros)
+        periodo_e = f2.date_input("Intervalo", key="periodo_erros", min_value=e_min, max_value=e_max,
+                                  format="DD/MM/YYYY")
+        clientes_e = f3.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
+                                    placeholder="Todos os clientes")
+        tipos_e = f4.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
+                                 placeholder="Todos os tipos")
+        granularidade = st.segmented_control("Agrupar por", list(regras.GRANULARIDADES), default="Dia",
+                                             key="granularidade_erros") or "Dia"
+        formato_periodo = {"Dia": "%d/%m", "Semana": "%d/%m", "Mês": "%m/%Y"}[granularidade]
+
+        ini_e, fim_e = (periodo_e if len(periodo_e) == 2 else (periodo_e[0], e_max))
+        dia_hist = historico["created"].dt.tz_localize(None).dt.normalize()
+        hist_e = historico.loc[(dia_hist.dt.date >= ini_e) & (dia_hist.dt.date <= fim_e)]
+        dia_erro = erros_todos["created"].dt.tz_localize(None).dt.normalize()
+        erros_e = erros_todos.loc[(dia_erro.dt.date >= ini_e) & (dia_erro.dt.date <= fim_e)]
+        if clientes_e:
+            hist_e = hist_e.loc[hist_e["tenant"].isin(clientes_e)]
+            erros_e = erros_e.loc[erros_e["tenant"].isin(clientes_e)]
+        if tipos_e:
+            erros_e = erros_e.loc[erros_e["tipo_erro"].isin(tipos_e)]
+
+        registros_e = int(hist_e["number_of_data_items"].sum())
+        linhas_e = int(erros_e["quantidade"].sum())
+        pct_e = 100 * linhas_e / registros_e if registros_e else None
+        ui.cartoes_metricas([
+            ("Registros processados", f"{registros_e:,}".replace(",", "."), "soma dos syncs do período",
+             tema.ACENTO_EXECUCOES,
+             "Responde: qual o tamanho do que foi processado? Cálculo: soma de number_of_data_items de todos os "
+             "syncs do período e dos clientes filtrados. Cada sync reenvia a base do cliente, então o mesmo "
+             "colaborador conta de novo a cada sync."),
+            ("Linhas de erro", f"{linhas_e:,}".replace(",", "."), f"em {erros_e['id_sync'].nunique()} syncs",
+             tema.ACENTO_ERROS,
+             "Responde: quantos registros falharam? Cálculo: soma das linhas de erro (itens afetados e dados de "
+             "sync com erro) dos syncs do período. Se o erro não for corrigido, a mesma linha se repete a cada sync."),
+            ("% de erro", f"{pct_e:.2f}%".replace(".", ",") if pct_e is not None else "—", "linhas de erro ÷ registros",
+             tema.ACENTO_CREDENCIAIS,
+             "Responde: que fração do processado deu erro? Cálculo: linhas de erro ÷ registros processados, no "
+             "mesmo período e filtros. Compare períodos de mesmo tamanho: um erro que se repete em cascata infla o "
+             "número."),
+            ("Clientes afetados", int(erros_e["tenant"].nunique()), f"de {hist_e['tenant'].nunique()} com sync",
+             tema.ACENTO_CORRECOES,
+             "Responde: em quantos clientes houve erro? Cálculo: clientes distintos com ao menos uma linha de erro "
+             "no período."),
+        ])
+        ui.nota("O histórico de erros começa em 16/10/2026. Contam todas as linhas de erro: um item que continua com "
+                "erro volta a ser contado a cada sync.")
+
+        if erros_e.empty:
+            st.info("Nenhum erro no período e filtros selecionados.")
+        else:
+            todos_tipos = sorted(erros_todos["tipo_erro"].unique())
+            cores_erros = graficos.cores_por_categoria(todos_tipos)
+
+            ui.secao(f"Erros por {granularidade.lower()}, por tipo")
+            ui.descricao("o volume de erro está subindo ou caindo, e de que tipo é?",
+                         "cada barra é um período (dia, semana ou mês, conforme o agrupamento) com o total de linhas "
+                         "de erro, dividido por tipo (cada cor um tipo). Passe o mouse para ver os valores.")
+            st.altair_chart(graficos.barras_por_dia_e_tipo(
+                regras.erros_por_periodo_e_tipo(erros_e, granularidade), cores_erros, formato_periodo,
+                "Linhas de erro"), width="stretch", theme=None)
+
+            ui.secao("% de erro por período")
+            ui.descricao("a proporção de erro melhorou, independente do volume processado?",
+                         "linhas de erro ÷ registros processados em cada período. Períodos sem registros ficam "
+                         "sem ponto.")
+            st.altair_chart(graficos.linha_pct_por_periodo(
+                regras.erros_e_registros_por_periodo(erros_e, hist_e, granularidade), tema.ACENTO_CREDENCIAIS,
+                formato_periodo), width="stretch", theme=None)
+
+            ui.secao("Erros mais frequentes")
+            ui.descricao("quais tipos de erro pesam mais?",
+                         "cada barra é um tipo de erro e o número é o total de linhas no período. Um único tipo "
+                         "costuma concentrar a maior parte do volume.")
+            por_tipo_e = erros_e.groupby("tipo_erro")["quantidade"].sum()
+            st.altair_chart(graficos.barras_horizontais(por_tipo_e, "Linhas de erro", cores=cores_erros),
+                            width="stretch", theme=None)
+
+            ui.secao("Erros por cliente")
+            ui.descricao("em quais clientes os erros se concentram?",
+                         "cada barra é um cliente (os 20 com mais linhas de erro) e o número é o total no período. "
+                         "A tabela abaixo traz todos, com registros processados e % de erro.")
+            por_cliente = regras.erros_por_cliente(erros_e, hist_e)
+            st.altair_chart(graficos.barras_horizontais(
+                por_cliente.head(20).set_index("tenant")["linhas"], "Linhas de erro", cor=tema.ACENTO_ERROS),
+                width="stretch", theme=None)
+
+            tabela_cliente = por_cliente.rename(columns={
+                "tenant": "Cliente", "registros": "Registros processados", "linhas": "Linhas de erro",
+                "pct": "% de erro", "syncs_com_erro": "Syncs com erro"})
+            st.dataframe(tabela_cliente, hide_index=True, width="stretch", column_config={
+                "Registros processados": st.column_config.NumberColumn(format="%d"),
+                "% de erro": st.column_config.NumberColumn(format="%.2f%%"),
+            })
+            st.download_button("Exportar CSV (contagens)", tabela_cliente.to_csv(index=False).encode("utf-8-sig"),
+                               file_name=f"erros_por_cliente_{agora:%Y%m%d}.csv", mime="text/csv",
+                               key="exportar_erros")
+            with st.expander("Tipo de erro por cliente (tabela)"):
+                st.dataframe(erros_e.pivot_table(index="tenant", columns="tipo_erro", values="quantidade",
+                                                 aggfunc="sum", fill_value=0), width="stretch")
+
+# =============================================================================
+# Aba 4 — Automação (indicadores da triagem/automação de
 # correção, migrados do antigo dashboard/ do repositório de origem)
 # =============================================================================
 
