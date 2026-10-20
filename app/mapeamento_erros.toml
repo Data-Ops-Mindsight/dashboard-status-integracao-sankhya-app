@@ -1,0 +1,33 @@
+# Quem precisa agir em cada tipo de erro: "Mindsight" ou "Cliente".
+#
+# Origem: o mapeamento por mensagem do dashboard-integracao-sankhya (assets/mapeamento_erros.xlsx), cruzado com
+# os tipos da triagem sobre 206.603 linhas de erro de 2026. Cada tipo ficou com o responsável dominante.
+# Onde havia divergência (percentual entre parênteses = linhas do outro responsável), vale o dominante:
+#   conflito_timespan (1,3% Cliente), pendente:change_employees (8% Cliente), pendente:change_pjs (10% Cliente).
+#
+# Tipo que não estiver aqui aparece como "A definir" no painel. Edite este arquivo para corrigir ou incluir tipos.
+
+[responsavel]
+# Cliente: dado cadastral do cliente que precisa ser corrigido por ele
+email_duplicado = "Cliente"
+email_invalido = "Cliente"
+cpf_invalido = "Cliente"
+transferencia_incompleta = "Cliente"
+"pendente:employee" = "Cliente"
+"pendente:user" = "Cliente"
+"pendente:username" = "Cliente"
+"pendente:last_name" = "Cliente"
+
+# Mindsight: períodos, vínculos e demais ações de integração
+conflito_timespan = "Mindsight"
+intervalo_invertido = "Mindsight"
+funcionario_inativo_no_periodo = "Mindsight"
+"pendente:change_employees" = "Mindsight"
+"pendente:change_employees_area" = "Mindsight"
+"pendente:change_employees_position" = "Mindsight"
+"pendente:change_salaries" = "Mindsight"
+"pendente:change_managers" = "Mindsight"
+"pendente:change_pjs" = "Mindsight"
+"pendente:change_pjs_area" = "Mindsight"
+
+# indefinido_mensagem_nao_reconhecida: sem responsável definido (fica "A definir")

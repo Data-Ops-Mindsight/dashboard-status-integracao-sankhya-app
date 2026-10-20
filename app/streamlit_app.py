@@ -12,7 +12,8 @@ import recarga
 
 # Módulos locais em ordem de dependência (quem é importado por outro vem antes).
 # Se um deploy atualizou algum arquivo com o app aberto, recarrega todos antes de usar.
-MODULOS_LOCAIS = ["senha", "regras", "tema", "graficos", "dados", "dados_correcoes", "componentes", "autenticacao"]
+MODULOS_LOCAIS = ["senha", "regras", "tema", "graficos", "mapeamento", "dados", "dados_correcoes", "componentes",
+                  "autenticacao"]
 recarga.recarregar_modulos_alterados(MODULOS_LOCAIS)
 
 import autenticacao  # noqa: E402
@@ -20,6 +21,7 @@ import componentes as ui  # noqa: E402
 import dados  # noqa: E402
 import dados_correcoes  # noqa: E402
 import graficos  # noqa: E402
+import mapeamento  # noqa: E402
 import regras  # noqa: E402
 import tema  # noqa: E402
 
@@ -185,13 +187,15 @@ if usuario:
 col_recarregar.button("↻ Recarregar dados", on_click=recarregar, width="stretch",
                       help="Busca os dados mais recentes agora (normalmente atualizam sozinhos a cada 10 min)")
 
-aba_atual, aba_historico, aba_erros, aba_automacao = st.tabs(["Status atual", "Histórico", "Erros", "Automação"])
+aba_status, aba_erros, aba_automacao = st.tabs(["Status", "Erros", "Automação"])
+with aba_status:
+    sub_atual, sub_mapa, sub_detalhe = st.tabs(["Visão atual", "Mapa por período", "Detalhe do cliente"])
 
 # =============================================================================
-# Aba 1 — Status atual
+# Aba 1 — Status (sub-abas: Visão atual, Mapa por período e Detalhe do cliente)
 # =============================================================================
 
-with aba_atual:
+with sub_atual:
     ui.intro("<b>Como está a integração de cada cliente agora?</b> Cada cliente é classificado pelo estado do seu "
              "<b>último sync</b> com o Sankhya. Os cartões contam quantos clientes estão em cada estado (passe o mouse "
              "para ver a regra) e a tabela abaixo mostra o detalhe de cada um.")
@@ -220,10 +224,13 @@ with aba_atual:
             " · ⚠️ = a última coleta deste cliente falhou na API")
 
 # =============================================================================
-# Aba 2 — Histórico
+# Mapa por período (sub-aba de Status)
 # =============================================================================
 
-with aba_historico:
+with sub_mapa:
+    ui.intro("<b>Como cada cliente se comportou ao longo do tempo?</b> Escolha o período e os clientes nos filtros: "
+             "o mapa mostra o resultado dos syncs por cliente e dia (ou por semana, em períodos longos). Para ver "
+             "todos os syncs de um cliente, use a sub-aba <b>Detalhe do cliente</b>.", tema.ACENTO_EXECUCOES)
     data_min = historico["created"].min().date()
     data_max = agora.date()
 
@@ -252,94 +259,101 @@ with aba_historico:
 
     if hist.empty:
         st.info("Nenhum sync no período e clientes selecionados.")
-        st.stop()
-
-    ui.intro("<b>Como cada cliente se comportou ao longo do tempo?</b> Escolha o período e os clientes nos filtros: "
-             "o mapa mostra o resultado dos syncs por cliente e dia (ou semana, em períodos longos), e o detalhe "
-             "abaixo traz todos os syncs de um cliente.", tema.ACENTO_EXECUCOES)
-
-    # --- Mapa de calor: clientes x dias (ou x semanas, em períodos longos) ---
-    semanal = (fim - inicio).days + 1 > LIMITE_DIAS_MAPA_DIARIO
-    eixo_y = dict(title=None, axis=alt.Axis(ticks=False, domain=False, labelPadding=8, labelLimit=240))
-
-    if not semanal:
-        ui.secao("Status diário por cliente")
-        ui.descricao("em quais dias cada cliente teve erro ou ficou pendente?",
-                     "cada linha é um cliente e cada coluna um dia; a célula mostra o <b>último sync daquele dia</b>. "
-                     "Quanto mais vermelho no topo, mais problemas no período.")
-        ui.legenda_status()
-        diario = regras.status_diario(hist)
-        diario["Status"] = diario["status"].map(tema.ROTULOS_STATUS)
-        diario["Glifo"] = diario["Status"].map(tema.GLIFOS_STATUS)
-        diario["Dia"] = pd.to_datetime(diario["data_sync"])
-        diario["Horário"] = diario["created"].dt.strftime("%d/%m %H:%M")
-
-        ordem_tenants = (diario.assign(erro=diario["status"] == "error")
-                         .groupby("tenant")["erro"].mean().sort_values(ascending=False).index.tolist())
-
-        base_mapa = alt.Chart(diario).encode(
-            x=alt.X("yearmonthdate(Dia):O", title=None,
-                    axis=alt.Axis(format="%d/%m", labelAngle=0, labelOverlap=True, ticks=False, domain=False)),
-            y=alt.Y("tenant:N", sort=ordem_tenants, **eixo_y),
-            tooltip=[alt.Tooltip("tenant:N", title="Cliente"), alt.Tooltip("Horário:N", title="Último sync do dia"),
-                     "Status:N", alt.Tooltip("number_of_affected_items:Q", title="Itens afetados", format=",.0f")],
-        )
-        celulas = base_mapa.mark_rect(cornerRadius=3, stroke=tema.OFF_WHITE, strokeWidth=2).encode(
-            color=alt.Color("Status:N", scale=ESCALA_STATUS, legend=None),
-        )
-        glifos = base_mapa.mark_text(color="white", fontSize=12, fontWeight=600).encode(text="Glifo:N")
-        # Períodos curtos: célula de largura fixa (não esticar 4 dias pela tela toda)
-        largura_fixa = diario["data_sync"].nunique() * 30 < 900
-        mapa = (celulas + glifos).properties(
-            height=alt.Step(24),
-            **({"width": alt.Step(30)} if largura_fixa else {}),
-        )
-        nota_mapa = ("Cada célula é o último sync do dia (× = erro, – = pendente). "
-                     "Clientes ordenados pela proporção de dias com erro no período. Célula vazia = nenhum sync naquele dia.")
     else:
-        ui.secao("Taxa de erro semanal por cliente")
-        ui.descricao("quais clientes tiveram mais erros, e em que semanas?",
-                     "cada célula é uma semana; a cor é a <b>proporção de syncs com erro</b> entre os finalizados "
-                     "(quanto mais escura, mais erros). Em períodos longos o mapa é agrupado por semana para caber.")
-        ui.legenda_gradiente(tema.RAMPA_ERRO, "0% de erro", "100% de erro")
-        semanas = regras.taxa_erro_semanal(hist)
-        semanas["Semana"] = semanas["semana"]
-        semanas["Período"] = (semanas["semana"].dt.strftime("%d/%m/%y") + " a "
-                              + (semanas["semana"] + pd.Timedelta(days=6)).dt.strftime("%d/%m/%y"))
-        semanas["Resumo"] = (semanas["erros"].astype(int).astype(str) + " erros de "
-                             + semanas["finalizados"].astype(int).astype(str) + " syncs finalizados")
 
-        totais = semanas.groupby("tenant")[["erros", "finalizados"]].sum()
-        ordem_tenants = (totais["erros"] / totais["finalizados"]).fillna(0).sort_values(ascending=False).index.tolist()
+        # --- Mapa de calor: clientes x dias (ou x semanas, em períodos longos) ---
+        semanal = (fim - inicio).days + 1 > LIMITE_DIAS_MAPA_DIARIO
+        eixo_y = dict(title=None, axis=alt.Axis(ticks=False, domain=False, labelPadding=8, labelLimit=240))
 
-        mapa = alt.Chart(semanas.dropna(subset=["taxa_erro"])).mark_rect(
-            cornerRadius=2, stroke=tema.OFF_WHITE, strokeWidth=1,
-        ).encode(
-            x=alt.X("yearmonthdate(Semana):O", title=None,
-                    axis=alt.Axis(format="%m/%y", labelAngle=0, labelOverlap=True, ticks=False, domain=False)),
-            y=alt.Y("tenant:N", sort=ordem_tenants, **eixo_y),
-            color=alt.Color("taxa_erro:Q", legend=None,
-                            scale=alt.Scale(domain=[0, 1 / 3, 2 / 3, 1], range=tema.RAMPA_ERRO)),
-            tooltip=[alt.Tooltip("tenant:N", title="Cliente"), alt.Tooltip("Período:N", title="Semana"),
-                     alt.Tooltip("taxa_erro:Q", title="Taxa de erro", format=".0%"),
-                     alt.Tooltip("Resumo:N", title="Syncs"), alt.Tooltip("pendentes:Q", title="Pendentes")],
-        ).properties(height=alt.Step(24))
-        largura_fixa = False
-        nota_mapa = ("Cada célula é uma semana (segunda a domingo); a cor é a proporção de syncs com erro entre os "
-                     f"finalizados. Períodos acima de {LIMITE_DIAS_MAPA_DIARIO} dias são agrupados por semana. "
-                     "Clientes ordenados pela taxa de erro no período. Célula vazia = nenhum sync finalizado na semana.")
+        if not semanal:
+            ui.secao("Status diário por cliente")
+            ui.descricao("em quais dias cada cliente teve erro ou ficou pendente?",
+                         "cada linha é um cliente e cada coluna um dia; a célula mostra o <b>último sync daquele dia</b>. "
+                         "Quanto mais vermelho no topo, mais problemas no período.")
+            ui.legenda_status()
+            diario = regras.status_diario(hist)
+            diario["Status"] = diario["status"].map(tema.ROTULOS_STATUS)
+            diario["Glifo"] = diario["Status"].map(tema.GLIFOS_STATUS)
+            diario["Dia"] = pd.to_datetime(diario["data_sync"])
+            diario["Horário"] = diario["created"].dt.strftime("%d/%m %H:%M")
 
-    st.altair_chart(tema.configurar_grafico(mapa), width="content" if largura_fixa else "stretch", theme=None)
-    ui.nota(nota_mapa)
+            ordem_tenants = (diario.assign(erro=diario["status"] == "error")
+                             .groupby("tenant")["erro"].mean().sort_values(ascending=False).index.tolist())
 
-    # --- Detalhe de um cliente ---
-    ui.secao("Detalhe do cliente")
-    ui.descricao("como foi o histórico de um cliente específico?",
-                 "os cartões resumem o estado atual e o período escolhido; o gráfico mostra cada sync como um ponto "
-                 "(altura = itens afetados, cor = status) e a tabela lista todos eles.")
-    tenant = st.selectbox("Cliente", ordem_tenants, label_visibility="collapsed")
-    syncs = hist.loc[hist["tenant"] == tenant].sort_values(["created", "id_sync"], ascending=False)
+            base_mapa = alt.Chart(diario).encode(
+                x=alt.X("yearmonthdate(Dia):O", title=None,
+                        axis=alt.Axis(format="%d/%m", labelAngle=0, labelOverlap=True, ticks=False, domain=False)),
+                y=alt.Y("tenant:N", sort=ordem_tenants, **eixo_y),
+                tooltip=[alt.Tooltip("tenant:N", title="Cliente"), alt.Tooltip("Horário:N", title="Último sync do dia"),
+                         "Status:N", alt.Tooltip("number_of_affected_items:Q", title="Itens afetados", format=",.0f")],
+            )
+            celulas = base_mapa.mark_rect(cornerRadius=3, stroke=tema.OFF_WHITE, strokeWidth=2).encode(
+                color=alt.Color("Status:N", scale=ESCALA_STATUS, legend=None),
+            )
+            glifos = base_mapa.mark_text(color="white", fontSize=12, fontWeight=600).encode(text="Glifo:N")
+            # Períodos curtos: célula de largura fixa (não esticar 4 dias pela tela toda)
+            largura_fixa = diario["data_sync"].nunique() * 30 < 900
+            mapa = (celulas + glifos).properties(
+                height=alt.Step(24),
+                **({"width": alt.Step(30)} if largura_fixa else {}),
+            )
+            nota_mapa = ("Cada célula é o último sync do dia (× = erro, – = pendente). "
+                         "Clientes ordenados pela proporção de dias com erro no período. Célula vazia = nenhum sync naquele dia.")
+        else:
+            ui.secao("Taxa de erro semanal por cliente")
+            ui.descricao("quais clientes tiveram mais erros, e em que semanas?",
+                         "cada célula é uma semana; a cor é a <b>proporção de syncs com erro</b> entre os finalizados "
+                         "(quanto mais escura, mais erros). Em períodos longos o mapa é agrupado por semana para caber.")
+            ui.legenda_gradiente(tema.RAMPA_ERRO, "0% de erro", "100% de erro")
+            semanas = regras.taxa_erro_semanal(hist)
+            semanas["Semana"] = semanas["semana"]
+            semanas["Período"] = (semanas["semana"].dt.strftime("%d/%m/%y") + " a "
+                                  + (semanas["semana"] + pd.Timedelta(days=6)).dt.strftime("%d/%m/%y"))
+            semanas["Resumo"] = (semanas["erros"].astype(int).astype(str) + " erros de "
+                                 + semanas["finalizados"].astype(int).astype(str) + " syncs finalizados")
+
+            totais = semanas.groupby("tenant")[["erros", "finalizados"]].sum()
+            ordem_tenants = (totais["erros"] / totais["finalizados"]).fillna(0).sort_values(ascending=False).index.tolist()
+
+            mapa = alt.Chart(semanas.dropna(subset=["taxa_erro"])).mark_rect(
+                cornerRadius=2, stroke=tema.OFF_WHITE, strokeWidth=1,
+            ).encode(
+                x=alt.X("yearmonthdate(Semana):O", title=None,
+                        axis=alt.Axis(format="%m/%y", labelAngle=0, labelOverlap=True, ticks=False, domain=False)),
+                y=alt.Y("tenant:N", sort=ordem_tenants, **eixo_y),
+                color=alt.Color("taxa_erro:Q", legend=None,
+                                scale=alt.Scale(domain=[0, 1 / 3, 2 / 3, 1], range=tema.RAMPA_ERRO)),
+                tooltip=[alt.Tooltip("tenant:N", title="Cliente"), alt.Tooltip("Período:N", title="Semana"),
+                         alt.Tooltip("taxa_erro:Q", title="Taxa de erro", format=".0%"),
+                         alt.Tooltip("Resumo:N", title="Syncs"), alt.Tooltip("pendentes:Q", title="Pendentes")],
+            ).properties(height=alt.Step(24))
+            largura_fixa = False
+            nota_mapa = ("Cada célula é uma semana (segunda a domingo); a cor é a proporção de syncs com erro entre os "
+                         f"finalizados. Períodos acima de {LIMITE_DIAS_MAPA_DIARIO} dias são agrupados por semana. "
+                         "Clientes ordenados pela taxa de erro no período. Célula vazia = nenhum sync finalizado na semana.")
+
+        st.altair_chart(tema.configurar_grafico(mapa), width="content" if largura_fixa else "stretch", theme=None)
+        ui.nota(nota_mapa)
+
+
+# =============================================================================
+# Detalhe do cliente (sub-aba de Status)
+# =============================================================================
+
+with sub_detalhe:
+    ui.intro("<b>Como foi o histórico de um cliente específico?</b> Escolha o cliente e o período: os cartões "
+             "resumem o estado atual e o período, o gráfico mostra cada sync como um ponto (altura = itens afetados, "
+             "cor = status) e a tabela lista todos eles.", tema.ACENTO_EXECUCOES)
+    col_cliente_d, col_periodo_d = st.columns([3, 3], vertical_alignment="bottom")
+    tenant = col_cliente_d.selectbox("Cliente", sorted(df_atual["tenant"]), key="cliente_detalhe")
+    atalho_d = col_periodo_d.segmented_control("Período", list(ATALHOS_PERIODO), default="30 dias",
+                                               key="atalho_periodo_detalhe") or "Tudo"
     syncs_todos = historico.loc[historico["tenant"] == tenant].sort_values(["created", "id_sync"], ascending=False)
+    fim = agora.date()
+    dias_d = ATALHOS_PERIODO[atalho_d]
+    inicio = (syncs_todos["created"].min().date() if dias_d is None or syncs_todos.empty
+              else fim - pd.Timedelta(days=dias_d - 1).to_pytimedelta())
+    syncs = syncs_todos.loc[syncs_todos["created"].dt.date >= inicio]
 
     estado_atual = df_atual.loc[df_atual["tenant"] == tenant, "estado"]
     ultimo_ok = regras.ultimo_sucesso(syncs_todos)
@@ -409,6 +423,8 @@ with aba_erros:
              tema.ACENTO_ERROS)
 
     erros_todos = regras.erros_por_sync(erros_sync, historico)
+    mapa_responsavel = mapeamento.carregar()
+    erros_todos["responsavel"] = erros_todos["tipo_erro"].map(lambda t: mapeamento.responsavel_do_tipo(t, mapa_responsavel))
     com_registros = historico.loc[historico["number_of_data_items"].notna()]
     if erros_todos.empty or com_registros.empty:
         st.info("Ainda não há erros detalhados coletados. Eles aparecem a cada coleta (a cada 4 horas).")
@@ -425,16 +441,23 @@ with aba_erros:
             st.session_state["atalho_periodo_erros"] = "Tudo"
             aplicar_atalho_erros()
 
-        f1, f2, f3, f4 = st.columns([2, 2, 2.4, 2.4], vertical_alignment="bottom")
+        f1, f2, f3 = st.columns([2, 2, 4.8], vertical_alignment="bottom")
         f1.segmented_control("Período", list(ATALHOS_PERIODO), key="atalho_periodo_erros",
                              on_change=aplicar_atalho_erros)
         periodo_e = f2.date_input("Intervalo", key="periodo_erros", min_value=e_min, max_value=e_max,
                                   format="DD/MM/YYYY")
         clientes_e = f3.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
                                     placeholder="Todos os clientes")
-        tipos_e = f4.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
+        g1, g2 = st.columns([4.8, 4])
+        tipos_e = g1.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
                                  placeholder="Todos os tipos")
-        granularidade = st.segmented_control("Agrupar por", list(regras.GRANULARIDADES), default="Dia",
+        responsaveis_e = g2.multiselect("Responsável", [r for r in mapeamento.RESPONSAVEIS
+                                                        if r in set(erros_todos["responsavel"])],
+                                        key="responsaveis_erros", placeholder="Todos")
+        if "granularidade_erros" not in st.session_state:
+            # histórico longo: semana por padrão (centenas de barras diárias não se leem)
+            st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
+        granularidade = st.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
                                              key="granularidade_erros") or "Dia"
         formato_periodo = {"Dia": "%d/%m", "Semana": "%d/%m", "Mês": "%m/%Y"}[granularidade]
 
@@ -448,10 +471,16 @@ with aba_erros:
             erros_e = erros_e.loc[erros_e["tenant"].isin(clientes_e)]
         if tipos_e:
             erros_e = erros_e.loc[erros_e["tipo_erro"].isin(tipos_e)]
+        if responsaveis_e:
+            erros_e = erros_e.loc[erros_e["responsavel"].isin(responsaveis_e)]
 
         registros_e = int(hist_e["number_of_data_items"].sum())
         linhas_e = int(erros_e["quantidade"].sum())
         pct_e = 100 * linhas_e / registros_e if registros_e else None
+        linhas_mindsight = int(erros_e.loc[erros_e["responsavel"] == mapeamento.MINDSIGHT, "quantidade"].sum())
+        linhas_cliente = int(erros_e.loc[erros_e["responsavel"] == mapeamento.CLIENTE, "quantidade"].sum())
+        pct_mindsight = f"{linhas_mindsight / linhas_e:.0%}" if linhas_e else "—"
+        pct_cliente = f"{linhas_cliente / linhas_e:.0%}" if linhas_e else "—"
         ui.cartoes_metricas([
             ("Registros processados", f"{registros_e:,}".replace(",", "."), "soma dos syncs do período",
              tema.ACENTO_EXECUCOES,
@@ -471,9 +500,13 @@ with aba_erros:
              tema.ACENTO_CORRECOES,
              "Responde: em quantos clientes houve erro? Cálculo: clientes distintos com ao menos uma linha de erro "
              "no período."),
+            ("Cabem à Mindsight", f"{linhas_mindsight:,}".replace(",", "."), f"{pct_mindsight} das linhas · "
+             f"Cliente {pct_cliente}", tema.ACENTO_TEMPO,
+             "Responde: quanto do erro depende de nós? Cálculo: linhas de erro dos tipos cujo responsável é a "
+             "Mindsight (arquivo mapeamento_erros.toml). O restante cabe ao Cliente ou está sem responsável definido."),
         ])
-        ui.nota("O histórico de erros começa em 16/10/2026. Contam todas as linhas de erro: um item que continua com "
-                "erro volta a ser contado a cada sync.")
+        ui.nota(f"O histórico de erros começa em {e_min:%d/%m/%Y}. Contam todas as linhas de erro: um item que "
+                "continua com erro volta a ser contado a cada sync.")
 
         if erros_e.empty:
             st.info("Nenhum erro no período e filtros selecionados.")
@@ -488,6 +521,17 @@ with aba_erros:
             st.altair_chart(graficos.barras_por_dia_e_tipo(
                 regras.erros_por_periodo_e_tipo(erros_e, granularidade), cores_erros, formato_periodo,
                 "Linhas de erro"), width="stretch", theme=None)
+
+            ui.secao(f"Erros por {granularidade.lower()}, por responsável")
+            ui.descricao("quem precisa agir para reduzir o erro?",
+                         "é o mesmo total do gráfico acima, dividido por quem precisa agir: <b>Mindsight</b> "
+                         "(períodos, vínculos, ações de integração), <b>Cliente</b> (dado cadastral que o cliente "
+                         "corrige) ou <b>A definir</b> (tipo ainda sem responsável no mapeamento).")
+            cores_responsavel = {mapeamento.MINDSIGHT: tema.ROXO, mapeamento.CLIENTE: tema.ACENTO_EXECUCOES,
+                                 mapeamento.A_DEFINIR: "#8A8580"}
+            por_resp = regras.erros_por_periodo_e_tipo(erros_e.assign(tipo_erro=erros_e["responsavel"]), granularidade)
+            st.altair_chart(graficos.barras_por_dia_e_tipo(por_resp, cores_responsavel, formato_periodo,
+                                                           "Linhas de erro"), width="stretch", theme=None)
 
             ui.secao("% de erro por período")
             ui.descricao("a proporção de erro melhorou, independente do volume processado?",
@@ -516,7 +560,8 @@ with aba_erros:
 
             tabela_cliente = por_cliente.rename(columns={
                 "tenant": "Cliente", "registros": "Registros processados", "linhas": "Linhas de erro",
-                "pct": "% de erro", "syncs_com_erro": "Syncs com erro"})
+                "pct": "% de erro", "syncs_com_erro": "Syncs com erro",
+                "linhas_mindsight": "Linhas Mindsight", "linhas_cliente": "Linhas Cliente"})
             st.dataframe(tabela_cliente, hide_index=True, width="stretch", column_config={
                 "Registros processados": st.column_config.NumberColumn(format="%d"),
                 "% de erro": st.column_config.NumberColumn(format="%.2f%%"),

@@ -278,5 +278,12 @@ def erros_por_cliente(erros, historico):
         linhas=("quantidade", "sum"), syncs_com_erro=("id_sync", "nunique"))
     resultado = agrupado.join(registros, how="left").fillna({"registros": 0}).reset_index()
     resultado["pct"] = (100 * resultado["linhas"] / resultado["registros"]).where(resultado["registros"] > 0)
-    return (resultado[["tenant", "registros", "linhas", "pct", "syncs_com_erro"]]
-            .sort_values(["linhas", "tenant"], ascending=[False, True]).reset_index(drop=True))
+    colunas = ["tenant", "registros", "linhas", "pct", "syncs_com_erro"]
+    if "responsavel" in erros.columns:  # quantas dessas linhas cabem a cada responsável
+        por_responsavel = erros.pivot_table(index="tenant", columns="responsavel", values="quantidade",
+                                            aggfunc="sum", fill_value=0)
+        for responsavel in ("Mindsight", "Cliente"):
+            resultado[f"linhas_{responsavel.lower()}"] = resultado["tenant"].map(
+                por_responsavel[responsavel] if responsavel in por_responsavel else {}).fillna(0).astype("int64")
+            colunas.append(f"linhas_{responsavel.lower()}")
+    return (resultado[colunas].sort_values(["linhas", "tenant"], ascending=[False, True]).reset_index(drop=True))

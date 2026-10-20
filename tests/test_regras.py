@@ -292,3 +292,12 @@ def test_erros_por_cliente_ordena_por_linhas_e_calcula_pct():
     assert c["tenant"].tolist() == ["b", "a"] and c["linhas"].tolist() == [20, 15]
     assert c["syncs_com_erro"].tolist() == [1, 2] and c["pct"].round(2).tolist() == [10.0, 7.5]
     assert regras.erros_por_cliente(e.iloc[0:0], historico).empty
+
+
+def test_erros_por_cliente_separa_as_linhas_por_responsavel():
+    historico, erros_sync = _base_erros()
+    e = regras.erros_por_sync(erros_sync, historico)
+    e["responsavel"] = e["tipo_erro"].map({"x": "Mindsight", "y": "Cliente"})
+    c = regras.erros_por_cliente(e, historico).set_index("tenant")
+    assert c.loc["a", ["linhas_mindsight", "linhas_cliente"]].tolist() == [10, 5]
+    assert c.loc["b", ["linhas_mindsight", "linhas_cliente"]].tolist() == [20, 0]
