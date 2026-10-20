@@ -208,9 +208,13 @@ def _formatar_qtd(valor):
     return "—" if pd.isna(valor) else f"{int(valor):,}".replace(",", ".")
 
 
-def explicacao_das_colunas():
-    """Texto (markdown) com a explicação de cada coluna da tabela, a partir das mesmas dicas dos cabeçalhos."""
-    return "\n".join(f"- **{coluna}:** {dica}" for coluna, dica in DICAS_COLUNAS.items())
+def explicacao_das_colunas(cor=None):
+    """Caixa roxa (mesmo estilo da introdução, fonte menor) explicando cada coluna da tabela de status.
+
+    Usa as mesmas dicas dos cabeçalhos (DICAS_COLUNAS), então os dois textos nunca divergem."""
+    itens = "".join(f"<li><b>{escape(coluna)}:</b> {escape(dica)}</li>" for coluna, dica in DICAS_COLUNAS.items())
+    _render(f"<div class='ms-intro ms-menor' style='--cor:{cor or tema.ROXO}'>"
+            f"<b>Entenda cada coluna</b><ul>{itens}</ul></div>")
 
 
 def tabela_status(df):

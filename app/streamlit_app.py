@@ -195,6 +195,7 @@ with aba_atual:
     ui.intro("<b>Como está a integração de cada cliente agora?</b> Cada cliente é classificado pelo estado do seu "
              "<b>último sync</b> com o Sankhya. Os cartões contam quantos clientes estão em cada estado (passe o mouse "
              "para ver a regra) e a tabela abaixo mostra o detalhe de cada um.")
+    ui.explicacao_das_colunas()
     contagem = df_atual["estado"].value_counts()
     ui.cartoes_estado(contagem, len(df_atual))
 
@@ -215,8 +216,6 @@ with aba_atual:
     tabela = tabela.sort_values(colunas, ascending=crescente, na_position="last")
 
     ui.tabela_status(tabela)
-    with st.expander("Entenda cada coluna", expanded=True):
-        st.markdown(ui.explicacao_das_colunas())
     ui.nota(f"{len(tabela)} de {len(df_atual)} clientes · a ordenação por taxa de erro (7 dias) considera só syncs finalizados (pending fora da conta)"
             " · ⚠️ = a última coleta deste cliente falhou na API")
 

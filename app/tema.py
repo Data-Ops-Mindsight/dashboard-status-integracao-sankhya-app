@@ -108,6 +108,9 @@ CSS = f"""
   color: color-mix(in srgb, var(--cor) 60%, {GRAFITE}); background: color-mix(in srgb, var(--cor) 8%, white);
   border-left: 4px solid var(--cor); border-radius: 10px;
 }}
+.ms-intro.ms-menor {{ font-size: .8rem; line-height: 1.4; padding: 10px 16px; }}
+.ms-intro.ms-menor ul {{ margin: 6px 0 0; padding-left: 18px; }}
+.ms-intro.ms-menor li {{ margin: 2px 0; }}
 .ms-descricao {{ color: {TEXTO_SECUNDARIO}; font-size: .85rem; line-height: 1.5; margin: 0 0 10px; }}
 .ms-descricao b {{ color: {GRAFITE}; font-weight: 600; }}
 .ms-info {{ color: {TEXTO_SECUNDARIO}; cursor: help; font-size: .8rem; }}

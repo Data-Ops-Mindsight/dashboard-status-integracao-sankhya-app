@@ -60,11 +60,18 @@ def test_cartoes_metricas_usam_a_cor_informada_ou_variam_pela_paleta(monkeypatch
     assert cores[0] != cores[1] and cores[2] == "#123456"
 
 
+def _html_da_explicacao(monkeypatch):
+    capturado = []
+    monkeypatch.setattr(componentes, "_render", capturado.append)
+    componentes.explicacao_das_colunas()
+    return capturado[0]
+
+
 def test_todas_as_colunas_tem_explicacao_no_cabecalho_e_no_quadro(monkeypatch):
     html = _html(monkeypatch, [_linha("alfa", "Erro", qtd_erros_ultimo_sync=3.0, tipo_erro_predominante="x",
                                       qtd_tipo_predominante=3.0)])
     cabecalhos = re.findall(r"<th(\s[^>]*)?>(.*?)</th>", html)
     assert len(cabecalhos) == 8
     assert all(" title='" in (atributos or "") for atributos, _ in cabecalhos)      # tooltip em TODAS as colunas
-    quadro = componentes.explicacao_das_colunas()
-    assert all(f"**{nome}:**" in quadro for _, nome in cabecalhos)
+    explicacao_das_colunas_html = _html_da_explicacao(monkeypatch)
+    assert all(f"<b>{nome}:</b>" in explicacao_das_colunas_html for _, nome in cabecalhos)
