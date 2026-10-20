@@ -52,8 +52,11 @@ def secao(titulo):
 
 
 def intro(texto, cor=None):
-    """Caixa de introdução de uma aba/seção: o que ela responde e como usar (aceita <b> no texto)."""
-    _render(f"<div class='ms-intro' style='--cor:{cor or tema.ROXO}'>{texto}</div>")
+    """Caixa de introdução de uma aba/seção: o que ela responde e como usar (aceita <b> no texto).
+
+    Todas as caixas usam o roxo da marca, a mesma da primeira do painel; `cor` é ignorado de propósito
+    (as seções mantêm o acento nos cartões e gráficos, não nas explicações)."""
+    _render(f"<div class='ms-intro' style='--cor:{tema.ROXO}'>{texto}</div>")
 
 
 def descricao(responde, como_ler=None):
@@ -213,7 +216,7 @@ def explicacao_das_colunas(cor=None):
 
     Usa as mesmas dicas dos cabeçalhos (DICAS_COLUNAS), então os dois textos nunca divergem."""
     itens = "".join(f"<li><b>{escape(coluna)}:</b> {escape(dica)}</li>" for coluna, dica in DICAS_COLUNAS.items())
-    _render(f"<div class='ms-intro ms-menor' style='--cor:{cor or tema.ROXO}'>"
+    _render(f"<div class='ms-intro ms-menor' style='--cor:{tema.ROXO}'>"
             f"<b>Entenda cada coluna</b><ul>{itens}</ul></div>")
 
 

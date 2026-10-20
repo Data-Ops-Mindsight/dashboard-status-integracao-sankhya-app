@@ -75,3 +75,12 @@ def test_todas_as_colunas_tem_explicacao_no_cabecalho_e_no_quadro(monkeypatch):
     assert all(" title='" in (atributos or "") for atributos, _ in cabecalhos)      # tooltip em TODAS as colunas
     explicacao_das_colunas_html = _html_da_explicacao(monkeypatch)
     assert all(f"<b>{nome}:</b>" in explicacao_das_colunas_html for _, nome in cabecalhos)
+
+
+def test_caixas_de_explicacao_usam_sempre_o_roxo_da_marca(monkeypatch):
+    capturado = []
+    monkeypatch.setattr(componentes, "_render", capturado.append)
+    componentes.intro("a")
+    componentes.intro("b", "#D9531E")                 # a cor pedida é ignorada de propósito
+    componentes.explicacao_das_colunas("#0E9AA7")
+    assert all(f"--cor:{componentes.tema.ROXO}" in html for html in capturado) and len(capturado) == 3

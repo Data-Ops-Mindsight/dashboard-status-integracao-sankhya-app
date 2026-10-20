@@ -106,7 +106,7 @@ CSS = f"""
 /* Explicações: caixa de introdução da aba/seção e descrição de cada gráfico */
 .ms-intro {{
   font-size: .92rem; line-height: 1.45; margin: 4px 0 16px; padding: 12px 18px;
-  color: color-mix(in srgb, var(--cor) 60%, {GRAFITE}); background: color-mix(in srgb, var(--cor) 8%, white);
+  color: #3B1480; background: #F3ECFD;
   border-left: 4px solid var(--cor); border-radius: 10px;
 }}
 .ms-intro.ms-menor {{ font-size: .8rem; line-height: 1.4; padding: 10px 16px; }}
