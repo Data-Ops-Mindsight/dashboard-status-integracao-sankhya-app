@@ -551,68 +551,90 @@ with aba_erros:
             cores_erros, tipos_em_destaque = graficos.cores_em_destaque(volume_tipos)
             cores_empilhado = {**cores_erros, graficos.OUTROS: tema.COR_OUTROS}
 
-            ui.secao(f"Erros por {granularidade.lower()}, por tipo")
-            ui.descricao("o volume de erro está subindo ou caindo, e de que tipo é?",
-                         "cada barra é um período (dia, semana ou mês, conforme o agrupamento) com o total de linhas "
-                         "de erro, dividido por tipo (cada cor um tipo). Passe o mouse para ver os valores.")
-            st.altair_chart(graficos.barras_por_dia_e_tipo(
-                graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, granularidade), "tipo",
-                                           tipos_em_destaque), cores_empilhado, formato_periodo,
-                "Linhas de erro"), width="stretch", theme=None)
-            if len(volume_tipos) > len(tipos_em_destaque):
-                ui.nota(f"Os {len(tipos_em_destaque)} tipos com mais linhas aparecem em cor; os demais "
-                        f"({len(volume_tipos) - len(tipos_em_destaque)}) ficam juntos em cinza, como \"Outros tipos\".")
+            sub_evol, sub_tipos, sub_clientes = st.tabs(["Evolução", "Tipos de erro", "Clientes"])
 
-            ui.secao(f"Erros por {granularidade.lower()}, por responsável")
-            ui.descricao("quem precisa agir para reduzir o erro?",
-                         "é o mesmo total do gráfico acima, dividido por quem precisa agir: <b>Mindsight</b> "
-                         "(períodos, vínculos, ações de integração), <b>Cliente</b> (dado cadastral que o cliente "
-                         "corrige) ou <b>A definir</b> (tipo ainda sem responsável no mapeamento).")
-            cores_responsavel = {mapeamento.MINDSIGHT: tema.ROXO, mapeamento.CLIENTE: tema.ACENTO_EXECUCOES,
-                                 mapeamento.A_DEFINIR: "#8A8580"}
-            por_resp = regras.erros_por_periodo_e_tipo(erros_e.assign(tipo_erro=erros_e["responsavel"]), granularidade)
-            st.altair_chart(graficos.barras_por_dia_e_tipo(por_resp, cores_responsavel, formato_periodo,
-                                                           "Linhas de erro", "Responsável"), width="stretch", theme=None)
+            with sub_evol:
+                ui.secao(f"Erros por {granularidade.lower()}, por tipo")
+                ui.descricao("o volume de erro está subindo ou caindo, e de que tipo é?",
+                             "cada barra é um período (dia, semana ou mês, conforme o agrupamento) com o total de linhas "
+                             "de erro, dividido por tipo (cada cor um tipo). Passe o mouse para ver os valores.")
+                st.altair_chart(graficos.barras_por_dia_e_tipo(
+                    graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, granularidade), "tipo",
+                                               tipos_em_destaque), cores_empilhado, formato_periodo,
+                    "Linhas de erro"), width="stretch", theme=None)
+                if len(volume_tipos) > len(tipos_em_destaque):
+                    ui.nota(f"Os {len(tipos_em_destaque)} tipos com mais linhas aparecem em cor; os demais "
+                            f"({len(volume_tipos) - len(tipos_em_destaque)}) ficam juntos em cinza, como \"Outros tipos\".")
 
-            ui.secao("% de erro por período")
-            ui.descricao("a proporção de erro melhorou, independente do volume processado?",
-                         "linhas de erro ÷ registros processados em cada período. Períodos sem registros ficam "
-                         "sem ponto.")
-            st.altair_chart(graficos.linha_pct_por_periodo(
-                regras.erros_e_registros_por_periodo(erros_e, hist_e, granularidade), tema.ACENTO_CREDENCIAIS,
-                formato_periodo), width="stretch", theme=None)
+                ui.secao(f"Erros por {granularidade.lower()}, por responsável")
+                ui.descricao("quem precisa agir para reduzir o erro?",
+                             "é o mesmo total do gráfico acima, dividido por quem precisa agir: <b>Mindsight</b> "
+                             "(períodos, vínculos, ações de integração), <b>Cliente</b> (dado cadastral que o cliente "
+                             "corrige) ou <b>A definir</b> (tipo ainda sem responsável no mapeamento).")
+                cores_responsavel = {mapeamento.MINDSIGHT: tema.ROXO, mapeamento.CLIENTE: tema.ACENTO_EXECUCOES,
+                                     mapeamento.A_DEFINIR: "#8A8580"}
+                por_resp = regras.erros_por_periodo_e_tipo(erros_e.assign(tipo_erro=erros_e["responsavel"]), granularidade)
+                st.altair_chart(graficos.barras_por_dia_e_tipo(por_resp, cores_responsavel, formato_periodo,
+                                                               "Linhas de erro", "Responsável"), width="stretch", theme=None)
 
-            ui.secao("Erros mais frequentes")
-            ui.descricao("quais tipos de erro pesam mais?",
-                         "cada barra é um tipo de erro e o número é o total de linhas no período. Um único tipo "
-                         "costuma concentrar a maior parte do volume.")
-            por_tipo_e = erros_e.groupby("tipo_erro")["quantidade"].sum()
-            st.altair_chart(graficos.barras_horizontais(por_tipo_e, "Linhas de erro", cores=cores_erros),
-                            width="stretch", theme=None)
+                ui.secao("% de erro por período")
+                ui.descricao("a proporção de erro melhorou, independente do volume processado?",
+                             "linhas de erro ÷ registros processados em cada período. Períodos sem registros ficam "
+                             "sem ponto.")
+                st.altair_chart(graficos.linha_pct_por_periodo(
+                    regras.erros_e_registros_por_periodo(erros_e, hist_e, granularidade), tema.ACENTO_CREDENCIAIS,
+                    formato_periodo), width="stretch", theme=None)
 
-            ui.secao("Erros por cliente")
-            ui.descricao("em quais clientes os erros se concentram?",
-                         "cada barra é um cliente (os 20 com mais linhas de erro) e o número é o total no período. "
-                         "A tabela abaixo traz todos, com registros processados e % de erro.")
-            por_cliente = regras.erros_por_cliente(erros_e, hist_e)
-            st.altair_chart(graficos.barras_horizontais(
-                por_cliente.head(20).set_index("tenant")["linhas"], "Linhas de erro", cor=tema.ACENTO_ERROS),
-                width="stretch", theme=None)
+            with sub_tipos:
+                ui.secao("Erros mais frequentes")
+                ui.descricao("quais tipos de erro pesam mais?",
+                             "cada barra é um tipo de erro e o número é o total de linhas no período. Um único tipo "
+                             "costuma concentrar a maior parte do volume.")
+                por_tipo_e = erros_e.groupby("tipo_erro")["quantidade"].sum()
+                st.altair_chart(graficos.barras_horizontais(por_tipo_e, "Linhas de erro", cores=cores_erros),
+                                width="stretch", theme=None)
 
-            tabela_cliente = por_cliente.rename(columns={
-                "tenant": "Cliente", "registros": "Registros processados", "linhas": "Linhas de erro",
-                "pct": "% de erro", "syncs_com_erro": "Syncs com erro",
-                "linhas_mindsight": "Linhas Mindsight", "linhas_cliente": "Linhas Cliente"})
-            st.dataframe(tabela_cliente, hide_index=True, width="stretch", column_config={
-                "Registros processados": st.column_config.NumberColumn(format="%d"),
-                "% de erro": st.column_config.NumberColumn(format="%.2f%%"),
-            })
-            st.download_button("Exportar CSV (contagens)", tabela_cliente.to_csv(index=False).encode("utf-8-sig"),
-                               file_name=f"erros_por_cliente_{agora:%Y%m%d}.csv", mime="text/csv",
-                               key="exportar_erros")
-            with st.expander("Tipo de erro por cliente (tabela)"):
-                st.dataframe(erros_e.pivot_table(index="tenant", columns="tipo_erro", values="quantidade",
-                                                 aggfunc="sum", fill_value=0), width="stretch")
+                ui.secao("Quem age em cada tipo")
+                ui.descricao("quanto de cada tipo cabe à Mindsight e quanto ao cliente?",
+                             "cada linha é um tipo de erro, com o responsável definido no mapeamento "
+                             "(<b>mapeamento_erros.toml</b>) e a fatia do total de linhas do período.")
+                quem_age = (erros_e.groupby(["tipo_erro", "responsavel"], as_index=False)["quantidade"].sum()
+                            .sort_values("quantidade", ascending=False))
+                quem_age["% do total"] = 100 * quem_age["quantidade"] / quem_age["quantidade"].sum()
+                st.dataframe(quem_age.rename(columns={"tipo_erro": "Tipo de erro", "responsavel": "Responsável",
+                                                      "quantidade": "Linhas de erro"}),
+                             hide_index=True, width="stretch",
+                             column_config={"% do total": st.column_config.NumberColumn(format="%.1f%%")})
+
+
+            with sub_clientes:
+                ui.secao("Erros por cliente")
+                ui.descricao("em quais clientes os erros se concentram?",
+                             "cada barra é um cliente (os 20 com mais linhas de erro) e o número é o total no período. "
+                             "A tabela abaixo traz todos, com registros processados e % de erro.")
+                por_cliente = regras.erros_por_cliente(erros_e, hist_e)
+                st.altair_chart(graficos.barras_horizontais(
+                    por_cliente.head(20).set_index("tenant")["linhas"], "Linhas de erro", cor=tema.ACENTO_ERROS),
+                    width="stretch", theme=None)
+
+                tabela_cliente = por_cliente.rename(columns={
+                    "tenant": "Cliente", "registros": "Registros processados", "linhas": "Linhas de erro",
+                    "pct": "% de erro", "syncs_com_erro": "Syncs com erro",
+                    "linhas_mindsight": "Linhas Mindsight", "linhas_cliente": "Linhas Cliente"})
+                st.dataframe(tabela_cliente, hide_index=True, width="stretch", column_config={
+                    "Registros processados": st.column_config.NumberColumn(format="localized"),
+                    "Linhas de erro": st.column_config.NumberColumn(format="localized"),
+                    "Syncs com erro": st.column_config.NumberColumn(format="localized"),
+                    "Linhas Mindsight": st.column_config.NumberColumn(format="localized"),
+                    "Linhas Cliente": st.column_config.NumberColumn(format="localized"),
+                    "% de erro": st.column_config.NumberColumn(format="%.2f%%"),
+                })
+                st.download_button("Exportar CSV (contagens)", tabela_cliente.to_csv(index=False).encode("utf-8-sig"),
+                                   file_name=f"erros_por_cliente_{agora:%Y%m%d}.csv", mime="text/csv",
+                                   key="exportar_erros")
+                with st.expander("Tipo de erro por cliente (tabela)"):
+                    st.dataframe(erros_e.pivot_table(index="tenant", columns="tipo_erro", values="quantidade",
+                                                     aggfunc="sum", fill_value=0), width="stretch")
 
 # =============================================================================
 # Aba 4 — Automação (indicadores da triagem/automação de
