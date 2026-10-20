@@ -566,6 +566,17 @@ with aba_erros:
                     ui.nota(f"Os {len(tipos_em_destaque)} tipos com mais linhas aparecem em cor; os demais "
                             f"({len(volume_tipos) - len(tipos_em_destaque)}) ficam juntos em cinza, como \"Outros tipos\".")
 
+                if granularidade != "Mês":  # no agrupamento mensal o gráfico de cima já é este
+                    ui.secao("Erros por mês, por tipo")
+                    ui.descricao("como o volume de erro mudou de um mês para o outro?",
+                                 "cada barra é um <b>mês</b> com o total de linhas de erro, dividido por tipo, "
+                                 "qualquer que seja o agrupamento escolhido acima. Bom para comparar meses, por "
+                                 "exemplo antes e depois da automação.")
+                    st.altair_chart(graficos.barras_por_dia_e_tipo(
+                        graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, "Mês"), "tipo",
+                                                   tipos_em_destaque), cores_empilhado, "%m/%Y",
+                        "Linhas de erro"), width="stretch", theme=None)
+
                 ui.secao(f"Erros por {granularidade.lower()}, por responsável")
                 ui.descricao("quem precisa agir para reduzir o erro?",
                              "é o mesmo total do gráfico acima, dividido por quem precisa agir: <b>Mindsight</b> "
