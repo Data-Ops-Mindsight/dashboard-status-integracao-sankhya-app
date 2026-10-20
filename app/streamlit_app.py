@@ -481,7 +481,15 @@ with aba_erros:
                                     placeholder="Todos os clientes")
         granularidade = f3.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
                                              key="granularidade_erros") or "Dia"
-        g1, g2 = st.columns([4.2, 3], vertical_alignment="bottom")
+        def limpar_filtros_erros():
+            st.session_state["periodo_erros"] = (e_min, e_max)
+            st.session_state["clientes_erros"] = []
+            st.session_state["tipos_erros"] = []
+            st.session_state["responsaveis_erros"] = []
+            st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
+
+        g1, g2, g3 = st.columns([4.2, 3, 2.2], vertical_alignment="bottom")
+        g3.button("Limpar filtros", on_click=limpar_filtros_erros, width="stretch", key="limpar_filtros_erros")
         tipos_e = g1.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
                                  placeholder="Todos os tipos")
         responsaveis_e = g2.multiselect("Responsável", [r for r in mapeamento.RESPONSAVEIS
@@ -533,6 +541,18 @@ with aba_erros:
              "Responde: quanto do erro depende de nós? Cálculo: linhas de erro dos tipos cujo responsável é a "
              "Mindsight (arquivo mapeamento_erros.toml). O restante cabe ao Cliente ou está sem responsável definido."),
         ])
+        ativos = []
+        if (ini_e, fim_e) != (e_min, e_max):
+            ativos.append(f"intervalo {ini_e:%d/%m/%Y} a {fim_e:%d/%m/%Y}")
+        if clientes_e:
+            ativos.append(f"{len(clientes_e)} cliente(s)")
+        if tipos_e:
+            ativos.append(f"{len(tipos_e)} tipo(s) de erro")
+        if responsaveis_e:
+            ativos.append("responsável " + ", ".join(responsaveis_e))
+        if ativos:
+            ui.nota("<b>Filtros ativos:</b> " + " · ".join(ativos) + ". Os registros processados só variam com o "
+                    "intervalo e o cliente (tipo e responsável filtram só as linhas de erro).")
         ui.nota(f"O histórico de erros começa em {e_min:%d/%m/%Y}. Contam todas as linhas de erro: um item que "
                 "continua com erro volta a ser contado a cada sync.")
 
