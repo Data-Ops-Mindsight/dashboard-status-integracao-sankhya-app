@@ -455,7 +455,7 @@ with sub_detalhe:
 with aba_erros:
     ui.intro("<b>Quanto erro as integrações geram, de que tipo e em quais clientes?</b> Cada \"linha de erro\" é um "
              "registro (colaborador, vínculo, etc.) que falhou em um sync. Use os filtros para acompanhar a evolução "
-             "por dia, semana, mês ou ano, ver quais tipos de erro mais pesam e em que clientes eles se concentram.",
+             "por mês (e, em um gráfico à parte, por dia), ver quais tipos de erro mais pesam e em que clientes eles se concentram.",
              tema.ACENTO_ERROS)
 
     erros_todos = regras.erros_por_sync(erros_sync, historico)
@@ -466,28 +466,29 @@ with aba_erros:
         st.info("Ainda não há erros detalhados coletados. Eles aparecem a cada coleta (a cada 4 horas).")
     else:
         e_min = com_registros["created"].min().date()
-        e_max = agora.date()
 
-        if "periodo_erros" not in st.session_state:
-            st.session_state["periodo_erros"] = (e_min, e_max)
-        if "granularidade_erros" not in st.session_state:
-            # histórico longo: semana por padrão (centenas de barras diárias não se leem)
-            st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
+        TODOS = "Todos"
+        NOMES_MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro",
+                       "Outubro", "Novembro", "Dezembro"]
+        datas_com_dado = com_registros["created"].dt.tz_localize(None)
+        anos_disp = sorted(datas_com_dado.dt.year.unique())
 
-        f1, f2, f3 = st.columns([2.4, 4, 3.4], vertical_alignment="bottom")
-        periodo_e = f1.date_input("Intervalo", key="periodo_erros", min_value=e_min, max_value=e_max,
-                                  format="DD/MM/YYYY")
-        clientes_e = f2.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
-                                    placeholder="Todos os clientes")
-        granularidade = f3.segmented_control("Agrupar por", list(regras.GRANULARIDADES),
-                                             key="granularidade_erros") or "Dia"
         def limpar_filtros_erros():
-            st.session_state["periodo_erros"] = (e_min, e_max)
-            st.session_state["clientes_erros"] = []
-            st.session_state["tipos_erros"] = []
-            st.session_state["responsaveis_erros"] = []
-            st.session_state["granularidade_erros"] = "Semana" if (e_max - e_min).days > 60 else "Dia"
+            st.session_state["ano_erros"] = TODOS
+            st.session_state["mes_erros"] = TODOS
+            for chave in ("clientes_erros", "tipos_erros", "responsaveis_erros"):
+                st.session_state[chave] = []
 
+        f1, f2, f3 = st.columns([1.6, 2, 5.4], vertical_alignment="bottom")
+        ano_sel = f1.selectbox("Ano", [TODOS] + anos_disp, key="ano_erros")
+        meses_disp = sorted(datas_com_dado.loc[datas_com_dado.dt.year == ano_sel].dt.month.unique()
+                            if ano_sel != TODOS else datas_com_dado.dt.month.unique())
+        if st.session_state.get("mes_erros", TODOS) not in [TODOS] + meses_disp:
+            st.session_state["mes_erros"] = TODOS   # o mês escolhido não existe no ano selecionado
+        mes_sel = f2.selectbox("Mês", [TODOS] + meses_disp, key="mes_erros",
+                               format_func=lambda m: m if m == TODOS else NOMES_MESES[m - 1])
+        clientes_e = f3.multiselect("Cliente", sorted(historico["tenant"].unique()), key="clientes_erros",
+                                    placeholder="Todos os clientes")
         g1, g2, g3 = st.columns([4.2, 3, 2.2], vertical_alignment="bottom")
         g3.button("Limpar filtros", on_click=limpar_filtros_erros, width="stretch", key="limpar_filtros_erros")
         tipos_e = g1.multiselect("Tipo de erro", sorted(erros_todos["tipo_erro"].unique()), key="tipos_erros",
@@ -495,13 +496,18 @@ with aba_erros:
         responsaveis_e = g2.multiselect("Responsável", [r for r in mapeamento.RESPONSAVEIS
                                                         if r in set(erros_todos["responsavel"])],
                                         key="responsaveis_erros", placeholder="Todos")
-        formato_periodo = {"Dia": "%d/%m", "Semana": "%d/%m", "Mês": "%m/%Y", "Ano": "%Y"}[granularidade]
 
-        ini_e, fim_e = (periodo_e if len(periodo_e) == 2 else (periodo_e[0], e_max))
-        dia_hist = historico["created"].dt.tz_localize(None).dt.normalize()
-        hist_e = historico.loc[(dia_hist.dt.date >= ini_e) & (dia_hist.dt.date <= fim_e)]
-        dia_erro = erros_todos["created"].dt.tz_localize(None).dt.normalize()
-        erros_e = erros_todos.loc[(dia_erro.dt.date >= ini_e) & (dia_erro.dt.date <= fim_e)]
+        def no_periodo(created):
+            dia = created.dt.tz_localize(None)
+            mascara = dia >= pd.Timestamp(e_min)
+            if ano_sel != TODOS:
+                mascara &= dia.dt.year == ano_sel
+            if mes_sel != TODOS:
+                mascara &= dia.dt.month == mes_sel
+            return mascara
+
+        hist_e = historico.loc[no_periodo(historico["created"])]
+        erros_e = erros_todos.loc[no_periodo(erros_todos["created"])]
         if clientes_e:
             hist_e = hist_e.loc[hist_e["tenant"].isin(clientes_e)]
             erros_e = erros_e.loc[erros_e["tenant"].isin(clientes_e)]
@@ -542,8 +548,10 @@ with aba_erros:
              "Mindsight (arquivo mapeamento_erros.toml). O restante cabe ao Cliente ou está sem responsável definido."),
         ])
         ativos = []
-        if (ini_e, fim_e) != (e_min, e_max):
-            ativos.append(f"intervalo {ini_e:%d/%m/%Y} a {fim_e:%d/%m/%Y}")
+        if ano_sel != TODOS:
+            ativos.append(f"ano {ano_sel}")
+        if mes_sel != TODOS:
+            ativos.append(f"mês {NOMES_MESES[mes_sel - 1].lower()}")
         if clientes_e:
             ativos.append(f"{len(clientes_e)} cliente(s)")
         if tipos_e:
@@ -566,47 +574,46 @@ with aba_erros:
             sub_evol, sub_tipos, sub_clientes = st.tabs(["Evolução", "Tipos de erro", "Clientes"])
 
             with sub_evol:
-                ui.secao(f"Erros por {granularidade.lower()}, por tipo")
+                ui.secao("Erros por mês, por tipo")
                 ui.descricao("o volume de erro está subindo ou caindo, e de que tipo é?",
-                             "cada barra é um período (dia, semana, mês ou ano, conforme o agrupamento) com o total de linhas "
-                             "de erro, dividido por tipo (cada cor um tipo). Passe o mouse para ver os valores.")
+                             "cada barra é um <b>mês</b> com o total de linhas de erro, dividido por tipo (cada cor "
+                             "um tipo). Bom para comparar meses, por exemplo antes e depois da automação. Passe o "
+                             "mouse para ver os valores.")
                 st.altair_chart(graficos.barras_por_dia_e_tipo(
-                    graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, granularidade), "tipo",
-                                               tipos_em_destaque), cores_empilhado, formato_periodo,
+                    graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, "Mês"), "tipo",
+                                               tipos_em_destaque), cores_empilhado, "%m/%Y",
                     "Linhas de erro"), width="stretch", theme=None)
                 if len(volume_tipos) > len(tipos_em_destaque):
                     ui.nota(f"Os {len(tipos_em_destaque)} tipos com mais linhas aparecem em cor; os demais "
                             f"({len(volume_tipos) - len(tipos_em_destaque)}) ficam juntos em cinza, como \"Outros tipos\".")
 
-                if granularidade != "Mês":  # no agrupamento mensal o gráfico de cima já é este
-                    ui.secao("Erros por mês, por tipo")
-                    ui.descricao("como o volume de erro mudou de um mês para o outro?",
-                                 "cada barra é um <b>mês</b> com o total de linhas de erro, dividido por tipo, "
-                                 "qualquer que seja o agrupamento escolhido acima. Bom para comparar meses, por "
-                                 "exemplo antes e depois da automação.")
-                    st.altair_chart(graficos.barras_por_dia_e_tipo(
-                        graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, "Mês"), "tipo",
-                                                   tipos_em_destaque), cores_empilhado, "%m/%Y",
-                        "Linhas de erro"), width="stretch", theme=None)
-
-                ui.secao(f"Erros por {granularidade.lower()}, por responsável")
+                ui.secao("Erros por mês, por responsável")
                 ui.descricao("quem precisa agir para reduzir o erro?",
                              "é o mesmo total do gráfico acima, dividido por quem precisa agir: <b>Mindsight</b> "
                              "(períodos, vínculos, ações de integração), <b>Cliente</b> (dado cadastral que o cliente "
                              "corrige) ou <b>A definir</b> (tipo ainda sem responsável no mapeamento).")
                 cores_responsavel = {mapeamento.MINDSIGHT: tema.ROXO, mapeamento.CLIENTE: tema.ACENTO_EXECUCOES,
                                      mapeamento.A_DEFINIR: "#8A8580"}
-                por_resp = regras.erros_por_periodo_e_tipo(erros_e.assign(tipo_erro=erros_e["responsavel"]), granularidade)
-                st.altair_chart(graficos.barras_por_dia_e_tipo(por_resp, cores_responsavel, formato_periodo,
+                por_resp = regras.erros_por_periodo_e_tipo(erros_e.assign(tipo_erro=erros_e["responsavel"]), "Mês")
+                st.altair_chart(graficos.barras_por_dia_e_tipo(por_resp, cores_responsavel, "%m/%Y",
                                                                "Linhas de erro", "Responsável"), width="stretch", theme=None)
 
-                ui.secao("% de erro por período")
+                ui.secao("% de erro por mês")
                 ui.descricao("a proporção de erro melhorou, independente do volume processado?",
-                             "linhas de erro ÷ registros processados em cada período. Períodos sem registros ficam "
-                             "sem ponto.")
+                             "linhas de erro ÷ registros processados em cada mês. Meses sem registros ficam sem ponto.")
                 st.altair_chart(graficos.linha_pct_por_periodo(
-                    regras.erros_e_registros_por_periodo(erros_e, hist_e, granularidade), tema.ACENTO_CREDENCIAIS,
-                    formato_periodo), width="stretch", theme=None)
+                    regras.erros_e_registros_por_periodo(erros_e, hist_e, "Mês"), tema.ACENTO_CREDENCIAIS,
+                    "%m/%Y"), width="stretch", theme=None)
+
+                ui.secao("Erros por dia, por tipo")
+                ui.descricao("em quais dias o erro concentrou, dentro do período escolhido?",
+                             "cada barra é um <b>dia</b> (UTC) com o total de linhas de erro, dividido por tipo. "
+                             "Escolha um <b>mês</b> nos filtros para ver os dias dele; com \"Todos\" aparecem todos os "
+                             "dias do período.")
+                st.altair_chart(graficos.barras_por_dia_e_tipo(
+                    graficos.agrupar_em_outros(regras.erros_por_periodo_e_tipo(erros_e, "Dia"), "tipo",
+                                               tipos_em_destaque), cores_empilhado, "%d/%m",
+                    "Linhas de erro"), width="stretch", theme=None)
 
             with sub_tipos:
                 ui.secao("Erros mais frequentes")
