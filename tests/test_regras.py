@@ -331,3 +331,18 @@ def test_erros_agrupados_por_ano():
     assert por_ano["erros"].tolist() == [1, 5] and por_ano["registros"].tolist() == [100.0, 200.0]
     assert "Ano" in regras.GRANULARIDADES
     assert regras.erros_por_periodo_e_tipo(e, "Ano")["valor"].tolist() == [1, 5]
+
+
+def test_correcao_de_conflito_timespan_com_geometria_e_classificada_pela_geometria():
+    assert regras.classe_da_correcao("conflito_timespan", "sobreposicao") == "sobreposicao"
+    assert regras.classe_da_correcao("conflito_timespan", "") == "conflito_timespan"          # sem geometria
+    assert regras.classe_da_correcao("conflito_timespan", None) == "conflito_timespan"
+    assert regras.classe_da_correcao("conflito_timespan", float("nan")) == "conflito_timespan"
+    assert regras.classe_da_correcao("email_duplicado", "sobreposicao") == "email_duplicado"  # só o conflito usa
+    df = pd.DataFrame({"tipo_erro": ["conflito_timespan", "conflito_timespan", "email_duplicado"],
+                       "geometria": ["periodo_identico", "", ""], "quantidade": [2, 1, 4]})
+    assert regras.com_classe_de_correcao(df)["classe"].tolist() == ["periodo_identico", "conflito_timespan",
+                                                                    "email_duplicado"]
+    antigo = df.drop(columns="geometria")                                                     # planilha sem a coluna
+    assert regras.com_classe_de_correcao(antigo)["classe"].tolist() == ["conflito_timespan"] * 2 + ["email_duplicado"]
+    assert regras.com_classe_de_correcao(df.iloc[0:0]).empty

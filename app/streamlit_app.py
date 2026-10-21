@@ -686,7 +686,7 @@ with aba_automacao:
         st.info("A planilha de relatório ainda não tem nenhuma execução publicada.")
     else:
         df_resumo = pd.DataFrame(resumo)
-        df_correcoes = pd.DataFrame(correcoes)
+        df_correcoes = regras.com_classe_de_correcao(pd.DataFrame(correcoes))
         sem_correcoes = df_correcoes.empty
         aviso_sem_correcoes = 'Ainda não há correções detalhadas publicadas (aba "Correcoes").'
 
@@ -723,17 +723,21 @@ with aba_automacao:
             if sem_correcoes:
                 ui.nota(aviso_sem_correcoes)
             else:
-                por_tipo_erro = df_correcoes.groupby("tipo_erro")["quantidade"].sum().sort_values(ascending=False)
-                cores_tipos = graficos.cores_por_categoria(por_tipo_erro.index)
+                # conflito_timespan com geometria é classificado pela geometria (ver regras.classe_da_correcao)
+                por_classe = df_correcoes.groupby("classe")["quantidade"].sum().sort_values(ascending=False)
+                cores_classes, classes_em_destaque = graficos.cores_em_destaque(por_classe)
+                cores_classes_empilhado = {**cores_classes, graficos.OUTROS: tema.COR_OUTROS}
 
                 ui.intro("<b>Que erros a automação corrige, quando e em quais clientes?</b> Os gráficos abaixo usam "
                          "só correções <b>efetivamente aplicadas</b>, não os erros que ficaram para revisão manual.",
                          tema.ACENTO_CORRECOES)
                 ui.secao("Quais erros estamos corrigindo")
                 ui.descricao("qual tipo de erro a automação mais corrige?",
-                             "cada barra é um tipo de erro e o número é o total de correções aplicadas. A cor de cada "
-                             "tipo é a mesma em todos os gráficos desta aba.")
-                st.altair_chart(graficos.barras_horizontais(por_tipo_erro, "Correções", cores=cores_tipos),
+                             "cada barra é uma classe de erro e o número é o total de correções aplicadas. Quando o "
+                             "erro é <b>conflito_timespan</b> e a correção tem <b>geometria</b> (o motivo do conflito), "
+                             "a classe é a própria geometria; sem geometria, continua conflito_timespan. A cor de cada "
+                             "classe é a mesma em todos os gráficos desta aba.")
+                st.altair_chart(graficos.barras_horizontais(por_classe, "Correções", cores=cores_classes),
                                 width="stretch", theme=None)
 
                 ui.secao("Correções por dia")
@@ -745,24 +749,27 @@ with aba_automacao:
                 st.altair_chart(graficos.barras_por_dia(por_dia, "Correções", tema.ACENTO_CORRECOES),
                                 width="stretch", theme=None)
 
-                ui.secao("Correções por dia, por tipo de erro")
+                ui.secao("Correções por dia, por classe de erro")
                 ui.descricao("o que compõe o total de cada dia?",
-                             "é o mesmo total do gráfico acima, dividido por tipo de erro (cada cor um tipo). "
-                             "Passe o mouse na barra para ver o tipo e a quantidade.")
+                             "é o mesmo total do gráfico acima, dividido por classe de erro (cada cor uma classe; "
+                             "conflito_timespan aparece aberto por geometria quando ela existe). As classes com "
+                             "menos correções ficam juntas em cinza. Passe o mouse na barra para ver os valores.")
                 st.altair_chart(graficos.barras_por_dia_e_tipo(
-                    regras.agregar_por_dia_e_tipo(df_correcoes, "data_hora_utc", "tipo_erro", "quantidade"),
-                    cores_tipos), width="stretch", theme=None)
+                    graficos.agrupar_em_outros(
+                        regras.agregar_por_dia_e_tipo(df_correcoes, "data_hora_utc", "classe", "quantidade"),
+                        "tipo", classes_em_destaque),
+                    cores_classes_empilhado), width="stretch", theme=None)
 
                 ui.secao("Erros corrigidos por cliente")
                 ui.descricao("em quais clientes a automação mais atuou?",
                              "cada barra é um cliente e o número é o total de correções aplicadas nele. "
-                             "A tabela escondida abaixo abre o total por tipo de erro em cada cliente.")
+                             "A tabela escondida abaixo abre o total por classe de erro em cada cliente.")
                 por_tenant = df_correcoes.groupby("tenant")["quantidade"].sum().sort_values(ascending=False)
                 st.altair_chart(graficos.barras_horizontais(por_tenant, "Correções", cor=tema.ACENTO_CREDENCIAIS),
                                 width="stretch", theme=None)
-                with st.expander("Tipo de erro por cliente (tabela)"):
+                with st.expander("Classe de erro por cliente (tabela)"):
                     matriz = df_correcoes.pivot_table(
-                        index="tenant", columns="tipo_erro", values="quantidade", aggfunc="sum", fill_value=0)
+                        index="tenant", columns="classe", values="quantidade", aggfunc="sum", fill_value=0)
                     st.dataframe(matriz, width="stretch")
 
         # -------------------------------------------------------------------- Tempo

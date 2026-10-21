@@ -313,3 +313,22 @@ def resolucao_do_cliente(correcoes, erros_cliente, inicio, fim):
                 .rename_axis("tipo").reset_index())
     por_tipo = por_tipo.sort_values(["erros", "corrigidos", "tipo"], ascending=[False, False, True]).reset_index(drop=True)
     return {"corrigidos": int(por_tipo["corrigidos"].sum()), "total": int(por_tipo["erros"].sum()), "por_tipo": por_tipo}
+
+
+TIPO_CONFLITO_TIMESPAN = "conflito_timespan"
+
+
+def classe_da_correcao(tipo_erro, geometria):
+    """Classe pela qual uma correção é agrupada na Automação: a GEOMETRIA quando o tipo é conflito_timespan e
+    há geometria; senão o próprio tipo de erro."""
+    geometria = "" if geometria is None or (isinstance(geometria, float) and pd.isna(geometria)) else str(geometria).strip()
+    return geometria if tipo_erro == TIPO_CONFLITO_TIMESPAN and geometria else tipo_erro
+
+
+def com_classe_de_correcao(correcoes):
+    """Acrescenta a coluna `classe` (ver `classe_da_correcao`); aceita DataFrame sem a coluna `geometria`
+    (correções publicadas antes dela existir) e DataFrame vazio."""
+    if correcoes.empty:
+        return correcoes.assign(classe=pd.Series(dtype="object"))
+    geometrias = correcoes["geometria"] if "geometria" in correcoes.columns else [""] * len(correcoes)
+    return correcoes.assign(classe=[classe_da_correcao(t, g) for t, g in zip(correcoes["tipo_erro"], geometrias)])
