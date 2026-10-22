@@ -1,6 +1,7 @@
 """Dashboard de acompanhamento das integrações Sankhya."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -78,14 +79,46 @@ def carregar(fonte):
     return dados.carregar_historico(fonte), dados.carregar_coletas(fonte)
 
 
-@st.cache_data(ttl=300, show_spinner="Carregando indicadores de correção…")
+@st.cache_data(ttl=300, show_spinner="Carregando dados da planilha…")
+def carregar_planilha(credenciais_json):
+    """Lê as abas da planilha (resumo, correções, classificação e cobertura) EM PARALELO: cada leitura leva alguns
+    segundos e, uma depois da outra, atrasavam a primeira página em cerca de 15 s. Devolve
+    {aba: (valor, mensagem_de_erro)}. Se TODAS falharem, levanta ErroFonteDados (e a falha não fica em cache)."""
+    leituras = {
+        "resumo": dados_correcoes.carregar_resumo,
+        "correcoes": dados_correcoes.carregar_correcoes,
+        "classificacao": dados_correcoes.carregar_classificacao_erros,
+        "cobertura": dados_correcoes.carregar_cobertura_credenciais,
+    }
+
+    def ler(leitura):
+        try:
+            return leitura(credenciais_json), None
+        except dados_correcoes.ErroFonteDados as e:
+            return None, str(e)
+
+    with ThreadPoolExecutor(max_workers=len(leituras)) as executor:
+        futuros = {nome: executor.submit(ler, leitura) for nome, leitura in leituras.items()}
+        resultado = {nome: futuro.result() for nome, futuro in futuros.items()}
+    if all(erro is not None for _, erro in resultado.values()):
+        raise dados_correcoes.ErroFonteDados(next(erro for _, erro in resultado.values()))
+    return resultado
+
+
+def _da_planilha(nome, credenciais_json):
+    """O valor de uma aba lida por `carregar_planilha`; levanta ErroFonteDados se aquela aba falhou."""
+    valor, erro = carregar_planilha(credenciais_json)[nome]
+    if erro is not None:
+        raise dados_correcoes.ErroFonteDados(erro)
+    return valor
+
+
 def carregar_correcoes(credenciais_json):
-    return dados_correcoes.carregar_resumo(credenciais_json), dados_correcoes.carregar_correcoes(credenciais_json)
+    return _da_planilha("resumo", credenciais_json), _da_planilha("correcoes", credenciais_json)
 
 
-@st.cache_data(ttl=300, show_spinner="Carregando cobertura de credenciais…")
 def carregar_cobertura_credenciais_cacheada(credenciais_json):
-    return dados_correcoes.carregar_cobertura_credenciais(credenciais_json)
+    return _da_planilha("cobertura", credenciais_json)
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -106,8 +139,7 @@ def carregar_geometrias_cacheado(credenciais_json):
     if not credenciais_json:
         return {}
     try:
-        return dados_correcoes.geometria_do_conflito_por_tenant(
-            dados_correcoes.carregar_classificacao_erros(credenciais_json))
+        return dados_correcoes.geometria_do_conflito_por_tenant(_da_planilha("classificacao", credenciais_json))
     except dados_correcoes.ErroFonteDados:
         return {}
 
@@ -116,8 +148,7 @@ def recarregar():
     """Descarta o cache (para todos os usuários) e busca os CSVs/a planilha
     de novo no próximo carregamento."""
     carregar.clear()
-    carregar_correcoes.clear()
-    carregar_cobertura_credenciais_cacheada.clear()
+    carregar_planilha.clear()
     carregar_erros_sync_cacheado.clear()
     carregar_geometrias_cacheado.clear()
 
